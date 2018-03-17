@@ -1,0 +1,1 @@
+from text2vec.preprocessing.dictionary import EmbeddingLookup
