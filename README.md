@@ -23,7 +23,7 @@ input text as the embedded vector representing the input.
 
 **note**: this is not a canonical implementation of the attention 
 mechanism, but this method was chosen intentionally to be able to 
-leverage the attention vector as the embedding output
+leverage the attention vector as the embedding output.
 
 ## Training
 
@@ -56,4 +56,13 @@ The model learns by minimizing on a generalized cosine distance
 loss function, which is convex over the domain in this problem. 
 The loss takes the functional form of
 
-![equation](http://latex.codecogs.com/svg.latex?\mathcal{L}_{mb}%20=%20\sum_{j=0}^{N_{mb}}%20\frac{\sum_{i=0}^{N_{d}}%201%20-%20v_i^{j^\mathcal{I}}%20\cdot%20v_i^{j^\mathcal{O}}%20}{L_j})
+![equation](http://latex.codecogs.com/svg.latex?\mathcal{L}_{mb}%20=%20\sum_{j=1}^{N_{mb}}%20\sum_{i=1}^{L_j}%20\frac{1}{L_j}%20\left(1%20-%20\textbf{v}_i^{\mathcal{I}_j}%20\cdot%20\textbf{v}_i^{\mathcal{O}_j}%20\right%20))
+
+where ![equation](http://latex.codecogs.com/svg.latex?\textbf{v}_i^{\mathcal{I}_j}) 
+is the L2-normalized, d-dimensional input vector of the i-th sequence 
+position of the j-th example in the mini-batch; 
+![equation](http://latex.codecogs.com/svg.latex?\textbf{v}_i^{\mathcal{O}_j}) 
+is the equivalent output from the decoding layers. 
+![equation](http://latex.codecogs.com/svg.latex?L_j) is the sequence 
+length of the j-th example. Since the model is an auto-morphism, then 
+the loss function should approach 0 as training is allowed to continue.
