@@ -56,4 +56,4 @@ The model learns by minimizing on a generalized cosine distance
 loss function, which is convex over the domain in this problem. 
 The loss takes the functional form of
 
-![equation](http://latex.codecogs.com/gif.latex?\mathcal{L}_{mb}%20=%20\sum_{j=0}^{N_{mb}}%20\frac{\sum_{i=0}^{N_{d}}%201%20-%20v_i^{j^\mathcal{I}}%20\cdot%20v_i^{j^\mathcal{O}}%20}{L_j})
+![equation](http://latex.codecogs.com/svg.latex?\mathcal{L}_{mb}%20=%20\sum_{j=0}^{N_{mb}}%20\frac{\sum_{i=0}^{N_{d}}%201%20-%20v_i^{j^\mathcal{I}}%20\cdot%20v_i^{j^\mathcal{O}}%20}{L_j})
