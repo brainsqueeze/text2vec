@@ -1,22 +1,3 @@
-<style TYPE="text/css">
-code.has-jax {font: inherit; font-size: 100%; background: inherit; border: inherit;}
-</style>
-<script type="text/x-mathjax-config">
-    MathJax.Hub.Config({
-        tex2jax: {
-            inlineMath: [['$','$'], ['\\(','\\)']],
-            skipTags: ['script', 'noscript', 'style', 'textarea', 'pre'] // removed 'code' entry
-        }
-    });
-    MathJax.Hub.Queue(function() {
-        var all = MathJax.Hub.getAllJax(), i;
-        for(i = 0; i < all.length; i += 1) {
-            all[i].SourceElement().parentNode.className += ' has-jax';
-        }
-    });
-</script>
-<script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
-
 # text2vec
 
 Contextual embedding for continuous texts.
@@ -75,4 +56,4 @@ The model learns by minimizing on a generalized cosine distance
 loss function, which is convex over the domain in this problem. 
 The loss takes the functional form of
 
-$\mathcal{L}_{mb} = \sum_{j=0}^{N_{mb}} \frac{\sum_{i=0}^{N_{d}} 1 - v_i^{j^\mathcal{I}} \cdot v_i^{j^\mathcal{O}} }{L_j}$
+![equation](http://latex.codecogs.com/gif.latex?\mathcal{L}_{mb}%20=%20\sum_{j=0}^{N_{mb}}%20\frac{\sum_{i=0}^{N_{d}}%201%20-%20v_i^{j^\mathcal{I}}%20\cdot%20v_i^{j^\mathcal{O}}%20}{L_j})
