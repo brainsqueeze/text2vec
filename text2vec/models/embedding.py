@@ -21,18 +21,19 @@ class TextAttention(object):
         self._num_hidden = num_hidden
         self._attention_size = attention_size
 
-        self._seq_lengths = tf.count_nonzero(input_x, axis=1, name="sequence_lengths")
         self._input_keep_prob, self._lstm_keep_prob, self._dense_keep_prob = tf.unstack(keep_prob)
 
         # input embedding
-        with tf.device("/cpu:0"):
-            embeddings = tf.Variable(
-                tf.random_uniform([vocab_size, self._dims], -1.0, 1.0),
-                name="word_embeddings",
-                trainable=True
-            )
-            self._input = tf.nn.embedding_lookup(embeddings, input_x)
-            input_x = self._input_op()
+        with tf.variable_scope('embedding'):
+            self._seq_lengths = tf.count_nonzero(input_x, axis=1, name="sequence_lengths")
+            with tf.device("/cpu:0"):
+                embeddings = tf.Variable(
+                    tf.random_uniform([vocab_size, self._dims], -1.0, 1.0),
+                    name="word_embeddings",
+                    trainable=True
+                )
+                self._input = tf.nn.embedding_lookup(embeddings, input_x)
+                input_x = self._input_op()
 
         # bi-directional encoder
         self.context, final_state, shape = self._encoder(input_x)
@@ -205,10 +206,10 @@ class TextAttention(object):
                 out_seq=tf.nn.l2_normalize(self._output, axis=2)
             )
 
-        with tf.variable_scope('l2_loss'):
-            weights = tf.trainable_variables()
-            l2_losses = [tf.nn.l2_loss(v) for v in weights if 'bias' not in v.name]
-            loss += (2e-6 / 2) * tf.add_n(l2_losses)
+        # with tf.variable_scope('l2_loss'):
+        #     weights = tf.trainable_variables()
+        #     l2_losses = [tf.nn.l2_loss(v) for v in weights if 'bias' not in v.name]
+        #     loss += (2e-6 / 2) * tf.add_n(l2_losses)
         return loss
 
     @property
