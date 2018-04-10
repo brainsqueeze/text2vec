@@ -165,13 +165,13 @@ def train(model_folder, num_tokens=10000, num_hidden=128, attention_size=128,
 def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("run", choices=["train"], help="Run type.")
+    parser.add_argument("model_name", type=str, help="Folder name in which to store model.")
     parser.add_argument("--tokens", type=int, help="Set the number of tokens to use.", default=10000)
     parser.add_argument("--hidden", type=int, help="Number of hidden LSTM dimensions.", default=128)
     parser.add_argument("--attention_size", type=int, help="Dimension of attention mechanism weight.", default=128)
     parser.add_argument("--mb_size", type=int, help="Number of examples in each mini-batch.", default=32)
     parser.add_argument("--num_mb", type=int, help="Number of mini-batches per epoch.", default=40)
     parser.add_argument("--epochs", type=int, help="Number of epochs to run.", default=100000)
-    parser.add_argument("--model_name", type=str, help="Folder name in which to store model.")
 
     args = parser.parse_args()
 

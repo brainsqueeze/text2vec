@@ -29,12 +29,13 @@ leverage the attention vector as the embedding output.
 
 Executing the training algorithm is accomplished by 
 ```bash
-python -m bin.main run=train \
-       --tokens 10000 \
-       --hidden 128 \
-       --attention_size 128 \
-       --epochs 10000 \
-       --model_name text_embedding
+python -m bin.main train \
+                   text_embedding \
+                   --hidden 128 \
+                   --attention_size 64 \
+                   --mb_size 32 \
+                   --num_mb 40 \
+                   --epochs 50
 ```
 This command will read a text training set in from [/data](text2vec/data) 
 and takes the top 10,000 most frequent tokens. It compiles 
