@@ -25,7 +25,11 @@ class EmbeddingLookup(object):
         if self._top_n is not None:
             self._dictionary = self._get_top_n_tokens()
         else:
-            self._dictionary = dict(self._dictionary)
+            self._dictionary = {item[0]: idx + 1 for idx, item in enumerate(self._dictionary.items())}
+
+            # add the <unk> token to the embedding lookup
+            size = len(self._dictionary)
+            self._dictionary[self._unknown] = size + 1
 
         self._reverse = {v: k for k, v in self._dictionary.items()}
         return self
