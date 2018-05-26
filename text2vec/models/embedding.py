@@ -156,7 +156,18 @@ class TextAttention(object):
         with tf.variable_scope('dense'):
             input_dim = input_x.get_shape().as_list()[-1]
             input_x = tf.nn.dropout(input_x, keep_prob=self._dense_keep_prob, name="dense_dropout")
-            weighted = tf.einsum('ijk,ik->ijk', input_x, self.context, name="context_projection")
+
+            with tf.variable_scope('projection'):
+                inner_product = tf.einsum("ijk,ik->ij", input_x, self.context)
+                context_norm_sqrd = tf.norm(self.context, axis=1) ** 2
+
+                # to make this work on the GPU we can't do broadcasting
+                # so we need to expand context norm to a 2D tensor,
+                # then tile that out to have the same number of columns as inner product
+                context_norm_sqrd = tf.tile(tf.expand_dims(context_norm_sqrd, -1), [1, self._time_steps])
+
+                alpha = tf.divide(inner_product, context_norm_sqrd)
+                projection = tf.einsum("ij,ik->ijk", alpha, self.context, name="projection_op")
 
             dec_weight_ = tf.get_variable("dec_weight",
                                           shape=[input_dim, self._dims],
@@ -170,7 +181,7 @@ class TextAttention(object):
                                         initializer=tf.zeros_initializer()
                                         )
 
-            output_ = tf.einsum('ijk,kl->ijl', weighted, dec_weight_) + dec_bias_
+            output_ = tf.einsum('ijk,kl->ijl', projection, dec_weight_) + dec_bias_
             return output_
 
     def generalized_cosine(self, in_seq, out_seq):

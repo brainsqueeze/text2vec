@@ -99,7 +99,14 @@ def train(model_folder, num_tokens=10000, num_hidden=128, attention_size=128,
     if not os.path.exists(log_dir):
         os.mkdir(log_dir)
 
-    with tf.Session() as sess:
+    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.9)
+    sess_config = tf.ConfigProto(
+        gpu_options=gpu_options,
+        allow_soft_placement=True,
+        log_device_placement=False
+    )
+
+    with tf.Session(config=sess_config) as sess:
         saver = tf.train.Saver()
         sess.run(tf.global_variables_initializer())
 
