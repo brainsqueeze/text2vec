@@ -46,7 +46,7 @@ def mini_batches(corpus, size, n_batches, seed):
 
 def train(model_folder, num_tokens=10000, num_hidden=128, attention_size=128,
           batch_size=32, num_batches=50, num_epochs=10):
-    log_dir = root + "/../text2vec/" + model_folder
+    log_dir = root + "/../../text2vec/" + model_folder
     if not os.path.exists(log_dir):
         os.mkdir(log_dir)
 
@@ -71,7 +71,6 @@ def train(model_folder, num_tokens=10000, num_hidden=128, attention_size=128,
     # write word lookup to a TSV file for TensorBoard visualizations
     with open(log_dir + "/metadata.tsv", "w") as lf:
         reverse = lookup.reverse
-        lf.write("word\n")
         lf.write("<eos>\n")
         for k in reverse:
             lf.write(reverse[k] + '\n')
@@ -99,7 +98,7 @@ def train(model_folder, num_tokens=10000, num_hidden=128, attention_size=128,
     if not os.path.exists(log_dir):
         os.mkdir(log_dir)
 
-    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.9)
+    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.8)
     sess_config = tf.ConfigProto(
         gpu_options=gpu_options,
         allow_soft_placement=True,
@@ -111,7 +110,7 @@ def train(model_folder, num_tokens=10000, num_hidden=128, attention_size=128,
         sess.run(tf.global_variables_initializer())
 
         summary_writer_train = tf.summary.FileWriter(log_dir + '/training', sess.graph)
-        summary_writer_dev = tf.summary.FileWriter(log_dir + '/dev', sess.graph)
+        summary_writer_dev = tf.summary.FileWriter(log_dir + '/validation', sess.graph)
         summary_writer_train.add_graph(graph=sess.graph)
         summary_writer_train.flush()
 
@@ -120,7 +119,7 @@ def train(model_folder, num_tokens=10000, num_hidden=128, attention_size=128,
         embedding_conf = config_.embeddings.add()
         embeddings = sess.graph.get_tensor_by_name("embedding/word_embeddings:0")
         embedding_conf.tensor_name = embeddings.name
-        embedding_conf.metadata_path = log_dir + "metadata.tsv"
+        embedding_conf.metadata_path = log_dir + "/metadata.tsv"
         tf.contrib.tensorboard.plugins.projector.visualize_embeddings(summary_writer_train, config_)
 
         model.assign_lr(sess, 1.0)
