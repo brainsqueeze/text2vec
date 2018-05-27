@@ -230,3 +230,7 @@ class TextAttention(object):
     @property
     def clip_norm(self):
         return self._clip_norm
+
+    @property
+    def embedding(self):
+        return self.context
