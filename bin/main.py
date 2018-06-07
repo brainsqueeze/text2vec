@@ -6,6 +6,7 @@ import numpy as np
 import pickle
 
 import argparse
+import json
 import os
 
 root = os.path.dirname(os.path.abspath(__file__))
@@ -30,18 +31,27 @@ def test_val_split(corpus, val_size):
     return corpus, cv_set
 
 
-def _pad_sequence(sequence, max_sequence_length):
-    seq_len = len(sequence)
-    difference = max_sequence_length - seq_len
-    pad = [0] * difference
-    return np.array(sequence + pad)
+def pad_sequence(sequence, max_sequence_length):
+    """
+    Pads individual text sequences to the maximum length
+    seen by the model at training time
+    :param sequence: list of integer lookup keys for the vocabulary (list)
+    :param max_sequence_length: (int)
+    :return: padded sequence (ndarray)
+    """
+
+    sequence = np.array(sequence, dtype=np.int32)
+    difference = max_sequence_length - sequence.shape[0]
+    pad = np.zeros((difference,), dtype=np.int32)
+    return np.concatenate((sequence, pad))
 
 
-def mini_batches(corpus, size, n_batches, seed):
+def mini_batches(corpus, size, n_batches, max_len, seed):
     np.random.seed(seed)
-    s = np.random.permutation(range(len(corpus)))
+    s = np.random.choice(range(len(corpus)), replace=False, size=min(len(corpus), size * n_batches)).astype(np.int32)
 
-    return [np.array([corpus[elem] for elem in s[n * size: (n + 1) * size]]) for n in range(n_batches)]
+    for mb in range(n_batches):
+        yield np.array([pad_sequence(corpus[index], max_len) for index in s[mb * size: (mb + 1) * size]])
 
 
 def train(model_folder, num_tokens=10000, num_hidden=128, attention_size=128,
@@ -76,13 +86,29 @@ def train(model_folder, num_tokens=10000, num_hidden=128, attention_size=128,
             lf.write(reverse[k] + '\n')
 
     print("[INFO] Padding sequences in corpus to length", max_seq_len)
-    full_text = np.array([_pad_sequence(seq, max_seq_len) for seq in full_text])
-    cv_x = np.array([_pad_sequence(seq, max_seq_len) for seq in cv_x])
-    keep_probabilities = [0.5, 0.8, 0.6]
+    full_text = np.array([pad_sequence(seq, max_seq_len) for seq in full_text])
+    cv_x = np.array([pad_sequence(seq, max_seq_len) for seq in cv_x])
+    keep_probabilities = [1.0, 0.7, 1.0]
 
     print("[INFO] Compiling seq2seq automorphism model")
     seq_input = tf.placeholder(dtype=tf.int32, shape=[None, max_seq_len])
     keep_prob = tf.placeholder_with_default([1.0, 1.0, 1.0], shape=(3,))
+
+    file_sys = open(log_dir + "/model.json", "w")
+    meta_data = {
+        "embeddingDimensions": num_hidden,
+        "maxSequenceLength": max_seq_len,
+        "vocabSize": vocab_size,
+        "attentionWeightDim": attention_size,
+        "trainingParameters": {
+            "keepProbabilities": keep_probabilities,
+            "nBatches": num_batches,
+            "batchSize": batch_size,
+            "maxEpochs": num_epochs
+        }
+    }
+    json.dump(meta_data, file_sys, indent=2)
+    file_sys.close()
 
     model = TextAttention(
         input_x=seq_input,
@@ -129,7 +155,7 @@ def train(model_folder, num_tokens=10000, num_hidden=128, attention_size=128,
             print("\t Epoch: %d" % (epoch + 1))
             i = 1
 
-            for x in mini_batches(full_text, size=batch_size, n_batches=num_batches, seed=epoch):
+            for x in mini_batches(full_text, size=batch_size, n_batches=num_batches, max_len=max_seq_len, seed=epoch):
                 if x.shape[0] == 0:
                     continue
                 train_summary, dev_summary = tf.Summary(), tf.Summary()

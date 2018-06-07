@@ -15,7 +15,7 @@ class EmbeddingLookup(object):
     def _get_top_n_tokens(self):
         top = self._dictionary.most_common(self._top_n)
         top = {item[0]: idx + 1 for idx, item in enumerate(top)}
-        top[self._unknown] = self._top_n + 1
+        top[self._unknown] = len(top) + 1
         return top
 
     def fit(self, corpus):

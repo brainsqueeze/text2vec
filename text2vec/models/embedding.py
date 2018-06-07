@@ -26,14 +26,13 @@ class TextAttention(object):
         # input embedding
         with tf.variable_scope('embedding'):
             self._seq_lengths = tf.count_nonzero(input_x, axis=1, name="sequence_lengths")
-            with tf.device("/cpu:0"):
-                embeddings = tf.Variable(
-                    tf.random_uniform([vocab_size, self._dims], -1.0, 1.0),
-                    name="word_embeddings",
-                    trainable=True
-                )
-                self._input = tf.nn.embedding_lookup(embeddings, input_x)
-                input_x = self._input_op()
+            embeddings = tf.Variable(
+                tf.random_uniform([vocab_size, self._dims], -1.0, 1.0),
+                name="word_embeddings",
+                trainable=True
+            )
+            self._input = tf.nn.embedding_lookup(embeddings, input_x)
+            input_x = self._input_op()
 
         # bi-directional encoder
         self.context, final_state, shape = self._encoder(input_x)
