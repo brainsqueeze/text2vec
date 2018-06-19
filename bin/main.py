@@ -196,7 +196,7 @@ def train(model_folder, num_tokens=10000, num_hidden=128, attention_size=128,
 
 def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument("run", choices=["train"], help="Run type.")
+    parser.add_argument("run", choices=["train", "infer"], help="Run type.")
     parser.add_argument("model_name", type=str, help="Folder name in which to store model.")
     parser.add_argument("--tokens", type=int, help="Set the number of tokens to use.", default=10000)
     parser.add_argument("--hidden", type=int, help="Number of hidden LSTM dimensions.", default=128)
@@ -221,6 +221,11 @@ def main():
             num_batches=args.num_mb,
             num_epochs=args.epochs
         )
+    elif args.run == "infer":
+        os.environ["MODEL_PATH"] = args.model_name
+
+        from .text_summarize import run_server
+        run_server(port=8008, is_production=False)
     else:
         raise NotImplementedError("Only training is enabled right now.")
     return

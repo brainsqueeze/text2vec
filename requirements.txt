@@ -1,2 +1,6 @@
 tensorflow>=1.5
 numpy
+nltk
+tornado
+flask
+flask-cors
