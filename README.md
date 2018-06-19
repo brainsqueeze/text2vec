@@ -37,7 +37,7 @@ python -m bin.main train \
                    --num_mb 40 \
                    --epochs 50
 ```
-This command will read a text training set in from [/data](text2vec/data) 
+This command will read a text training set in from [data](text2vec/data) 
 and takes the top 10,000 most frequent tokens. It compiles 
 a LSTM+attention encoder-decoder automorphism model with 
 128 hidden LSTM layers in both the encoder/decoder layers, 
@@ -67,3 +67,18 @@ is the equivalent output from the decoding layers.
 ![equation](http://latex.codecogs.com/svg.latex?L_j) is the sequence 
 length of the j-th example. Since the model is an auto-morphism, then 
 the loss function should approach 0 as training is allowed to continue.
+
+## Inference Demo
+
+Once a model is fully trained then a demo API can be run, along with a small 
+UI to interact with the REST API. This demo attempts to use the trained model 
+to condense long bodies of text into the most important sentences, using the 
+inferred embedded context vectors.
+
+To start the model server simply run 
+```bash
+python -m bin.main infer text_embedding
+```
+where `text_embedding` should be replaced with the name of your model's log 
+directory.  A demonstration webpage is included in [demo](demo) at 
+[context.html](demo/context.html).
