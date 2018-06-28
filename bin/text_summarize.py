@@ -37,7 +37,7 @@ def cosine_similarity_sort(x, y):
     x /= np.linalg.norm(x, axis=1, keepdims=True)
     y /= np.linalg.norm(y, axis=1, keepdims=True)
 
-    similarity = np.einsum("ij,kj->ik", x, y)
+    similarity = np.dot(x, y.T)
     sort = np.argsort(1 - similarity, axis=1)[0]
 
     return sort, similarity.flatten()[sort]
