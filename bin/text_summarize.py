@@ -43,13 +43,18 @@ def cosine_similarity_sort(x, y):
     return sort, similarity.flatten()[sort]
 
 
-def choose(sentences, scores, embeddings):
+def choose(sentences, scores, embeddings, use_variance=True):
     if scores.shape[0] == 1:
         return sentences, scores, embeddings
 
     # should be sigmoidal since the selections are independent variables
     prob_correct = 1 / (1 + np.exp(-scores))
-    cut = prob_correct >= prob_correct.mean() + prob_correct.std()
+
+    threshold = prob_correct.mean()
+    if use_variance:
+        threshold += prob_correct.std()
+
+    cut = prob_correct >= threshold
     return sentences[cut], scores[cut], embeddings[cut]
 
 
@@ -88,20 +93,21 @@ def compute():
     for p in range(len(sentences)):
         num_sentences = len(sentences[p])
         s_emb = embedding_sentence[start: start + num_sentences]
-        p_emb = embedding_paragraph[p][:, None].T
+        p_emb = embedding_paragraph[p, None]
 
         sorted_order, scores = cosine_similarity_sort(p_emb, s_emb)
         sorted_sentences = np.array(sentences[p])[sorted_order]
         embeddings = s_emb[sorted_order]
-        top_sentences, top_scores, top_embeddings = choose(sorted_sentences, scores, embeddings)
-        # top_sentence = np.array(sentences[p])[sorted_order][0]
 
-        # best_sentences.append(top_sentence)
-        best_sentences.extend(top_sentences)
-        # best_scores.append(scores[0])
-        best_scores.extend(top_scores)
-        # best_embeddings.append(s_emb[sorted_order][0])
-        best_embeddings.extend(top_embeddings)
+        sorted_sentences = sorted_sentences[~np.isnan(scores)]
+        scores = scores[~np.isnan(scores)]
+
+        if sorted_sentences.shape[0] > 0:
+            top_sentences, top_scores, top_embeddings = choose(sorted_sentences, scores, embeddings, use_variance=True)
+
+            best_sentences.extend(top_sentences)
+            best_scores.extend(top_scores)
+            best_embeddings.extend(top_embeddings)
 
         start += num_sentences
 
