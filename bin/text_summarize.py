@@ -43,16 +43,13 @@ def cosine_similarity_sort(x, y):
     return sort, similarity.flatten()[sort]
 
 
-def choose(sentences, scores, embeddings, use_variance=True):
+def choose(sentences, scores, embeddings):
     if scores.shape[0] == 1:
         return sentences, scores, embeddings
 
     # should be sigmoidal since the selections are independent variables
-    prob_correct = 1 / (1 + np.exp(-scores))
-
+    prob_correct = 1 / (1 + np.exp(-(scores - scores.mean()) / scores.std()))
     threshold = prob_correct.mean()
-    if use_variance:
-        threshold += prob_correct.std()
 
     cut = prob_correct >= threshold
     return sentences[cut], scores[cut], embeddings[cut]
@@ -103,7 +100,7 @@ def compute():
         scores = scores[~np.isnan(scores)]
 
         if sorted_sentences.shape[0] > 0:
-            top_sentences, top_scores, top_embeddings = choose(sorted_sentences, scores, embeddings, use_variance=True)
+            top_sentences, top_scores, top_embeddings = choose(sorted_sentences, scores, embeddings)
 
             best_sentences.extend(top_sentences)
             best_scores.extend(top_scores)
@@ -120,6 +117,9 @@ def compute():
     ordered = np.array(best_sentences)[sorted_order]
 
     top_sentences, top_scores, _ = choose(ordered, scores, np.array(best_embeddings)[sorted_order])
+    # impose 90% cutoff on the posterior probabilities
+    top_sentences = top_sentences[top_scores > 0.9]
+    top_scores = top_scores[top_scores > 0.9]
 
     data = [{"text": text, "relevanceScore": score} for text, score in zip(top_sentences, top_scores.astype(float))]
 
