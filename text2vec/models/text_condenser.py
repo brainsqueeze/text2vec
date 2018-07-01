@@ -8,7 +8,6 @@ from itertools import groupby
 
 import pickle
 import json
-import sys
 import os
 
 
