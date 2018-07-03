@@ -8,7 +8,6 @@ from itertools import groupby
 
 import pickle
 import json
-import sys
 import os
 
 
@@ -32,7 +31,7 @@ class Embedder(object):
             keep_prob=self._keep_prob,
             num_hidden=num_hidden,
             attention_size=attention_size,
-            is_training=True
+            is_training=False
         )
 
         if use_gpu:
