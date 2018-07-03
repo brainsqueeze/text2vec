@@ -140,6 +140,7 @@ def compute():
     )
 
     # get the embedding vectors for each sentence in the document
+    doc_embedding = np.sum(embedding_paragraph, axis=0)[None, :]
     sentences = [th.split_sentences(sent) for sent in paragraphs]
     x_sentence = np.vstack([e.process_input([sent]) for para in sentences for sent in para])
     embedding_sentence = e.embed(x_sentence)
