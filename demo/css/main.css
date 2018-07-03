@@ -42,3 +42,5 @@
     display: block;
     width: 80%;
 }
+.response-container .response-line {background: #eee; padding: 5px;}
+.response-container .response-line:nth-child(odd) {background: #ddd;}

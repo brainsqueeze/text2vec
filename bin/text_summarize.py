@@ -30,37 +30,88 @@ def responder(results, error, message):
     )
 
 
-def cosine_similarity_sort(x, y):
-    assert x.shape[0] == 1
-    assert x.shape[-1] == y.shape[-1]
+def cosine_similarity_sort(net_vector, embedding_matrix):
+    """
+    Computes the cosine similarity scores and then returns
+    the sorted results
+    :param net_vector: the context vector for the entire document (ndarray)
+    :param embedding_matrix: the context vectors (row vectors) for each constituent body of text (ndarray)
+    :return: (sorted order of documents, cosine similarity scores)
+    """
 
-    x /= np.linalg.norm(x, axis=1, keepdims=True)
-    y /= np.linalg.norm(y, axis=1, keepdims=True)
+    assert net_vector.shape[0] == 1
+    assert net_vector.shape[-1] == embedding_matrix.shape[-1]
 
-    similarity = np.dot(x, y.T)
+    net_vector /= np.linalg.norm(net_vector, axis=1, keepdims=True)
+    embedding_matrix /= np.linalg.norm(embedding_matrix, axis=1, keepdims=True)
+
+    similarity = np.dot(net_vector, embedding_matrix.T)
     sort = np.argsort(1 - similarity, axis=1)[0]
 
     return sort, similarity.flatten()[sort]
 
 
-def choose(sentences, scores, embeddings, use_variance=True):
+def angle_from_cosine(cosine_similarity):
+    """
+    Computes the angles in degrees from cosine similarity scores
+    :param cosine_similarity: (ndarray)
+    :return: angles in degrees (ndarray)
+    """
+
+    return np.arccos(cosine_similarity) * (180 / np.pi)
+
+
+def choose(sentences, scores, embeddings):
+    """
+    Selects the best constituent texts from the similarity scores
+    :param sentences: array of the input texts, sorted by scores (ndarray)
+    :param scores: cosine similarity scores, sorted (ndarray)
+    :param embeddings: embedding matrix for input texts, sorted by scores (ndarray)
+    :return: best sentences sorted, best scores sorted, best embeddings sorted
+    """
+
     if scores.shape[0] == 1:
         return sentences, scores, embeddings
 
-    # should be sigmoidal since the selections are independent variables
-    prob_correct = 1 / (1 + np.exp(-scores))
-
-    threshold = prob_correct.mean()
-    if use_variance:
-        threshold += prob_correct.std()
-
-    cut = prob_correct >= threshold
+    angles = angle_from_cosine(scores)
+    threshold = angles.min() + np.percentile(angles, 5)  # angle in degrees
+    cut = angles < threshold
     return sentences[cut], scores[cut], embeddings[cut]
+
+
+def text_pass_filter(texts, texts_embeddings, net_vector):
+    """
+    Runs the scoring + filtering process on input texts
+    :param texts: input texts (ndarray)
+    :param texts_embeddings: context embedding matrix for input texts (ndarray)
+    :param net_vector: the context vector for the entire document (ndarray)
+    :return: best sentences sorted, best scores sorted, best embeddings sorted
+    """
+
+    sorted_order, scores = cosine_similarity_sort(
+        net_vector=net_vector,
+        embedding_matrix=texts_embeddings
+    )
+
+    texts = np.array(texts)[sorted_order]
+
+    filtered_texts, filtered_scores, filtered_embeddings = choose(
+        sentences=texts,
+        scores=scores,
+        embeddings=texts_embeddings[sorted_order]
+    )
+
+    return filtered_texts, filtered_scores, filtered_embeddings
 
 
 @app.route('/condense', methods=['POST', 'GET'])
 @cross_origin(origins=['*'], allow_headers=['Content-Type', 'Authorization'])
 def compute():
+    """
+    Main Flask handler function
+    :return: (Flask response object)
+    """
+
     j = request.get_json()
     if j is None:
         j = request.args
@@ -81,45 +132,24 @@ def compute():
     x_paragraph = e.process_input(paragraphs)
     embedding_paragraph = e.embed(x_paragraph)
 
+    doc_embedding = np.sum(embedding_paragraph, axis=0)[None, :]
+    paragraphs, scores, embedding_paragraph = text_pass_filter(
+        texts=paragraphs,
+        texts_embeddings=embedding_paragraph,
+        net_vector=doc_embedding
+    )
+
     # get the embedding vectors for each sentence in the document
     sentences = [th.split_sentences(sent) for sent in paragraphs]
     x_sentence = np.vstack([e.process_input([sent]) for para in sentences for sent in para])
     embedding_sentence = e.embed(x_sentence)
 
-    # loop through each paragraph, compute the sentence that best summarizes the paragraph
-    # using cosine similarity scores between each sentence embedding and overall paragraph embedding
-    best_sentences, best_scores, best_embeddings = [], [], []
-    start = 0
-    for p in range(len(sentences)):
-        num_sentences = len(sentences[p])
-        s_emb = embedding_sentence[start: start + num_sentences]
-        p_emb = embedding_paragraph[p, None]
-
-        sorted_order, scores = cosine_similarity_sort(p_emb, s_emb)
-        sorted_sentences = np.array(sentences[p])[sorted_order]
-        embeddings = s_emb[sorted_order]
-
-        sorted_sentences = sorted_sentences[~np.isnan(scores)]
-        scores = scores[~np.isnan(scores)]
-
-        if sorted_sentences.shape[0] > 0:
-            top_sentences, top_scores, top_embeddings = choose(sorted_sentences, scores, embeddings, use_variance=True)
-
-            best_sentences.extend(top_sentences)
-            best_scores.extend(top_scores)
-            best_embeddings.extend(top_embeddings)
-
-        start += num_sentences
-
-    # get the embedding vector for the combination of the best sentences
-    x_agg = e.process_input([" ".join(best_sentences)])
-    embedding_agg = e.embed(x_agg)
-
-    # for each "best sentence" in each paragraph, which one best summarizes the entire document
-    sorted_order, scores = cosine_similarity_sort(embedding_agg, np.vstack(best_embeddings))
-    ordered = np.array(best_sentences)[sorted_order]
-
-    top_sentences, top_scores, _ = choose(ordered, scores, np.array(best_embeddings)[sorted_order])
+    sentences_flat = np.array([sent for block in sentences for sent in block])
+    top_sentences, top_scores, _ = text_pass_filter(
+        texts=sentences_flat,
+        texts_embeddings=embedding_sentence,
+        net_vector=doc_embedding
+    )
 
     data = [{"text": text, "relevanceScore": score} for text, score in zip(top_sentences, top_scores.astype(float))]
 
