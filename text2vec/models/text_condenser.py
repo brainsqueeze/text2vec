@@ -95,4 +95,4 @@ class TextHandler(object):
         return self._paragraph_tokenizer(input_text)
 
     def split_sentences(self, input_text):
-        return self._sentence_tokenizer.tokenize(input_text)
+        return self._sentence_tokenizer.tokenize(input_text.replace(";", "."))

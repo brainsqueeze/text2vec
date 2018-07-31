@@ -45,6 +45,9 @@ def cosine_similarity_sort(net_vector, embedding_matrix):
     net_vector /= np.linalg.norm(net_vector, axis=1, keepdims=True)
     embedding_matrix /= np.linalg.norm(embedding_matrix, axis=1, keepdims=True)
 
+    net_vector[np.isnan(net_vector)] = 0
+    embedding_matrix[np.isnan(embedding_matrix)] = 0
+
     similarity = np.dot(net_vector, embedding_matrix.T)
     sort = np.argsort(1 - similarity, axis=1)[0]
 
