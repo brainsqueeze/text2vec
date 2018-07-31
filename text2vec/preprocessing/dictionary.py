@@ -1,16 +1,43 @@
 from collections import Counter
 import re
 
+import math
+
 
 class EmbeddingLookup(object):
 
-    def __init__(self, top_n=None):
+    def __init__(self, top_n=None, use_tf_idf_importance=False):
         self._tokenizer = re.compile("\w+|\$[\d\.]+").findall
         self._top_n = top_n
+        self._use_tf_idf = use_tf_idf_importance
+
         self._dictionary = None
         self._reverse = None
-
         self._unknown = "<unk>"
+
+    def _get_top_n_tokens_tf_idf(self, corpus):
+        # create set of tokens for each document
+        doc_lookups = [set(self._tokenizer(document)) for document in corpus]
+
+        inverse_df = []
+        for i in range(len(corpus)):
+            document = doc_lookups[i]
+
+            # for each document, find all of the unique words
+            # these will be counted up at the end (unique occurrences) to get document frequencies
+            present_tokens = document.intersection(self._dictionary)
+            inverse_df.extend(present_tokens)
+
+        # compute the smooth TF-IDF values
+        inverse_df = {k: math.log(1 + len(corpus)) / (1 + v) for k, v in Counter(inverse_df).items()}
+        total_dfs = sum(self._dictionary.values())
+        tf_idf = {token: (self._dictionary[token] / total_dfs) * inverse_df[token] for token in self._dictionary}
+
+        # sort by TF-IDF values, descending, then build the dictionary using these tokens
+        sort_terms = sorted(tf_idf, key=lambda x: x[1], reverse=True)[:self._top_n]
+        top = {item[0]: idx + 1 for idx, item in enumerate(sort_terms)}
+        top[self._unknown] = len(top) + 1
+        return top
 
     def _get_top_n_tokens(self):
         top = self._dictionary.most_common(self._top_n)
@@ -23,7 +50,10 @@ class EmbeddingLookup(object):
         self._dictionary = Counter(tokens)
 
         if self._top_n is not None:
-            self._dictionary = self._get_top_n_tokens()
+            if self._use_tf_idf and self._top_n > len(self._dictionary):
+                self._dictionary = self._get_top_n_tokens_tf_idf(corpus)
+            else:
+                self._dictionary = self._get_top_n_tokens()
         else:
             self._dictionary = {item[0]: idx + 1 for idx, item in enumerate(self._dictionary.items())}
 
