@@ -29,12 +29,12 @@ class EmbeddingLookup(object):
             inverse_df.extend(present_tokens)
 
         # compute the smooth TF-IDF values
-        inverse_df = {k: math.log(1 + len(corpus)) / (1 + v) for k, v in Counter(inverse_df).items()}
+        inverse_df = {k: math.log(1 + (1 + len(corpus)) / (1 + v)) for k, v in Counter(inverse_df).items()}
         total_dfs = sum(self._dictionary.values())
-        tf_idf = {token: (self._dictionary[token] / total_dfs) * inverse_df[token] for token in self._dictionary}
+        tf_idf = {token: (self._dictionary[token] / total_dfs) * inverse_df[token] for token in inverse_df}
 
         # sort by TF-IDF values, descending, then build the dictionary using these tokens
-        sort_terms = sorted(tf_idf, key=lambda x: x[1], reverse=True)[:self._top_n]
+        sort_terms = sorted(tf_idf.items(), key=lambda x: x[1], reverse=True)[:self._top_n]
         top = {item[0]: idx + 1 for idx, item in enumerate(sort_terms)}
         top[self._unknown] = len(top) + 1
         return top
@@ -49,8 +49,8 @@ class EmbeddingLookup(object):
         tokens = [word for text in corpus for word in self._tokenizer(text.strip())]
         self._dictionary = Counter(tokens)
 
-        if self._top_n is not None:
-            if self._use_tf_idf and self._top_n > len(self._dictionary):
+        if self._top_n is not None and self._top_n < len(self._dictionary):
+            if self._use_tf_idf:
                 self._dictionary = self._get_top_n_tokens_tf_idf(corpus)
             else:
                 self._dictionary = self._get_top_n_tokens()
