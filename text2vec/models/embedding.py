@@ -32,6 +32,7 @@ class TextAttention(object):
             embeddings = tf.Variable(
                 tf.random_uniform([vocab_size, self._dims], -1.0, 1.0),
                 name="word_embeddings",
+                dtype=tf.float32,
                 trainable=True
             )
             self._input = tf.nn.embedding_lookup(embeddings, input_x)
@@ -136,6 +137,7 @@ class TextAttention(object):
             w_omega = tf.get_variable(
                 "w_omega",
                 shape=[in_dim, self._attention_size],
+                dtype=tf.float32,
                 initializer=tf.contrib.layers.xavier_initializer(uniform=True)
             )
             b_omega = tf.get_variable("b_omega", shape=[self._attention_size], initializer=tf.zeros_initializer())

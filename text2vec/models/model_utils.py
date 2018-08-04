@@ -2,6 +2,15 @@ import tensorflow as tf
 
 
 def build_cell(num_layers, num_hidden, keep_prob, use_cuda=False):
+    """
+    Builds up LSTM cells programmatically
+    :param num_layers: (int)
+    :param num_hidden: dimension of hidden weights (int)
+    :param keep_prob: (float, [0, 1])
+    :param use_cuda: (bool)
+    :return: LSTM cell object
+    """
+
     cells = []
 
     for _ in range(num_layers):
@@ -11,6 +20,7 @@ def build_cell(num_layers, num_hidden, keep_prob, use_cuda=False):
             cell = tf.nn.rnn_cell.LSTMCell(
                 num_hidden,
                 forget_bias=0.0,
+                dtype=tf.float32,
                 initializer=tf.random_uniform_initializer(-0.1, 0.1),
             )
 
@@ -30,6 +40,13 @@ def length(sequence):
 
 
 def sum_reduce(seq_fw, seq_bw):
+    """
+    Combines forward and backward components of bi-directional RNNs by summing them element-wise
+    :param seq_fw: forward object
+    :param seq_bw: backward object
+    :return: same object type as the input sequence objects, summed element-wise
+    """
+
     if tf.contrib.framework.nest.is_sequence(seq_fw):
         tf.contrib.framework.nest.assert_same_structure(seq_fw, seq_bw)
 
@@ -45,6 +62,13 @@ def sum_reduce(seq_fw, seq_bw):
 
 
 def concat_reducer(seq_fw, seq_bw):
+    """
+    Combines forward and backward components of bi-directional RNNs by concatenation
+    :param seq_fw: forward object
+    :param seq_bw: backward object
+    :return: same object type as the input sequence objects, concatenated
+    """
+
     if tf.contrib.framework.nest.is_sequence(seq_fw):
         tf.contrib.framework.nest.assert_same_structure(seq_fw, seq_bw)
 
