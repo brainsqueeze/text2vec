@@ -1,6 +1,7 @@
 from text2vec.preprocessing import EmbeddingLookup
 from text2vec.models import TextAttention
 import tensorflow as tf
+from tensorflow.python.client.device_lib import list_local_devices
 import numpy as np
 
 import pickle
@@ -10,6 +11,18 @@ import json
 import os
 
 root = os.path.dirname(os.path.abspath(__file__))
+
+
+def log(message):
+    print(f"[INFO] {message}")
+
+
+def validate_hardware():
+    has_gpu = any([True if x.device_type == 'GPU' else False for x in list_local_devices()])
+
+    if not has_gpu:
+        log("Use of the GPU was requested but not found. Placing graph on the CPU.")
+    return has_gpu
 
 
 def load_text():
@@ -55,23 +68,27 @@ def mini_batches(corpus, size, n_batches, max_len, seed):
 
 
 def train(model_folder, num_tokens=10000, num_hidden=128, attention_size=128,
-          batch_size=32, num_batches=50, num_epochs=10):
+          batch_size=32, num_batches=50, num_epochs=10,
+          use_tf_idf=False, use_cuda=False):
+
+    use_cuda = use_cuda and validate_hardware()
+
     log_dir = root + "/../../text2vec/" + model_folder
     if not os.path.exists(log_dir):
         os.mkdir(log_dir)
 
-    print("[INFO] Fetching corpus and transforming to frequency domain")
+    log("Fetching corpus and transforming to frequency domain")
     corpus = load_text()
 
-    print("[INFO] Splitting the training and validation sets")
+    log("Splitting the training and validation sets")
     full_text, cv_x = test_val_split(corpus=corpus, val_size=512)
 
-    print("[INFO] Fitting embedding lookup and transforming the training and cross-validation sets")
-    lookup = EmbeddingLookup(top_n=num_tokens)
+    log("Fitting embedding lookup and transforming the training and cross-validation sets")
+    lookup = EmbeddingLookup(top_n=num_tokens, use_tf_idf_importance=use_tf_idf)
     full_text = lookup.fit_transform(corpus=full_text)
     cv_x = lookup.transform(corpus=cv_x)
 
-    print("[INFO] Getting the maximum sequence length and vocab size")
+    log("Getting the maximum sequence length and vocab size")
     max_seq_len = max([len(seq) for seq in full_text + cv_x])
     vocab_size = max([max(seq) for seq in full_text + cv_x]) + 1
 
@@ -85,12 +102,12 @@ def train(model_folder, num_tokens=10000, num_hidden=128, attention_size=128,
         for k in reverse:
             lf.write(reverse[k] + '\n')
 
-    print("[INFO] Padding sequences in corpus to length", max_seq_len)
+    log(f"Padding sequences in corpus to length {max_seq_len}")
     full_text = np.array([pad_sequence(seq, max_seq_len) for seq in full_text])
     cv_x = np.array([pad_sequence(seq, max_seq_len) for seq in cv_x])
     keep_probabilities = [1.0, 0.7, 1.0]
 
-    print("[INFO] Compiling seq2seq automorphism model")
+    log("Compiling seq2seq automorphism model")
     seq_input = tf.placeholder(dtype=tf.int32, shape=[None, max_seq_len])
     keep_prob = tf.placeholder_with_default([1.0, 1.0, 1.0], shape=(3,))
 
@@ -117,7 +134,8 @@ def train(model_folder, num_tokens=10000, num_hidden=128, attention_size=128,
         keep_prob=keep_prob,
         num_hidden=num_hidden,
         attention_size=attention_size,
-        is_training=True
+        is_training=True,
+        use_cuda=use_cuda
     )
 
     lstm_file_name = None
@@ -207,6 +225,10 @@ def main():
     parser.add_argument("--mb_size", type=int, help="Number of examples in each mini-batch.", default=32)
     parser.add_argument("--num_mb", type=int, help="Number of mini-batches per epoch.", default=40)
     parser.add_argument("--epochs", type=int, help="Number of epochs to run.", default=100000)
+    parser.add_argument("--cuda", type=int,
+                        help="Flag set to determine whether to use the GPU", default=0, choices=[0, 1])
+    parser.add_argument("--idf", type=int, help="Flag set to use TF-IDF values for N-token selection.",
+                        default=0, choices=[0, 1])
 
     args = parser.parse_args()
 
@@ -222,7 +244,9 @@ def main():
             attention_size=args.attention_size,
             batch_size=args.mb_size,
             num_batches=args.num_mb,
-            num_epochs=args.epochs
+            num_epochs=args.epochs,
+            use_tf_idf=bool(args.idf),
+            use_cuda=bool(args.cuda)
         )
     elif args.run == "infer":
         os.environ["MODEL_PATH"] = args.model_name

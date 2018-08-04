@@ -1,22 +1,20 @@
 import tensorflow as tf
 
 
-def build_cell(num_layers, num_hidden, keep_prob):
+def build_cell(num_layers, num_hidden, keep_prob, use_cuda=False):
     cells = []
 
     for _ in range(num_layers):
-        cell = tf.nn.rnn_cell.LSTMCell(
-            num_hidden,
-            # forget_bias=0.0,
-            initializer=tf.random_uniform_initializer(-0.1, 0.1),
-        )
+        if use_cuda:
+            cell = tf.contrib.cudnn_rnn.CudnnCompatibleLSTMCell(num_hidden)
+        else:
+            cell = tf.nn.rnn_cell.LSTMCell(
+                num_hidden,
+                # forget_bias=0.0,
+                initializer=tf.random_uniform_initializer(-0.1, 0.1),
+            )
 
-        cell = tf.nn.rnn_cell.DropoutWrapper(
-            cell,
-            # state_keep_prob=self._lstm_keep_prob,
-            output_keep_prob=keep_prob
-        )
-
+        cell = tf.nn.rnn_cell.DropoutWrapper(cell, output_keep_prob=keep_prob)
         cells.append(cell)
 
     if num_layers > 1:

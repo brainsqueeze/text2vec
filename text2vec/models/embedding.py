@@ -15,11 +15,14 @@ class TextAttention(object):
     vectors, and then using the context vectors onto which I project the target sequence.
     """
 
-    def __init__(self, input_x, vocab_size, embedding_size, keep_prob, num_hidden, attention_size, is_training=False):
+    def __init__(self, input_x, vocab_size, embedding_size, keep_prob, num_hidden, attention_size
+                 , is_training=False, use_cuda=False):
         self._batch_size, self._time_steps = input_x.get_shape().as_list()
         self._dims = embedding_size
         self._num_hidden = num_hidden
         self._attention_size = attention_size
+
+        self._use_cuda = use_cuda
 
         self._input_keep_prob, self._lstm_keep_prob, self._dense_keep_prob = tf.unstack(keep_prob)
 
@@ -95,8 +98,20 @@ class TextAttention(object):
 
     def _encoder(self, input_x):
         with tf.variable_scope('encoder'):
-            forward = mu.build_cell(num_layers=2, num_hidden=self._num_hidden, keep_prob=self._lstm_keep_prob)
-            backward = mu.build_cell(num_layers=2, num_hidden=self._num_hidden, keep_prob=self._lstm_keep_prob)
+            num_layers = 2
+
+            forward = mu.build_cell(
+                num_layers=num_layers,
+                num_hidden=self._num_hidden,
+                keep_prob=self._lstm_keep_prob,
+                use_cuda=self._use_cuda
+            )
+            backward = mu.build_cell(
+                num_layers=num_layers,
+                num_hidden=self._num_hidden,
+                keep_prob=self._lstm_keep_prob,
+                use_cuda=self._use_cuda
+            )
 
             output_seq, final_state = tf.nn.bidirectional_dynamic_rnn(
                 cell_fw=forward,
@@ -135,8 +150,20 @@ class TextAttention(object):
 
     def _decoder(self, tensor_shape, initial_state):
         with tf.variable_scope('decoder'):
-            forward = mu.build_cell(num_layers=2, num_hidden=self._num_hidden, keep_prob=self._lstm_keep_prob)
-            backward = mu.build_cell(num_layers=2, num_hidden=self._num_hidden, keep_prob=self._lstm_keep_prob)
+            num_layers = 2
+
+            forward = mu.build_cell(
+                num_layers=num_layers,
+                num_hidden=self._num_hidden,
+                keep_prob=self._lstm_keep_prob,
+                use_cuda=self._use_cuda
+            )
+            backward = mu.build_cell(
+                num_layers=num_layers,
+                num_hidden=self._num_hidden,
+                keep_prob=self._lstm_keep_prob,
+                use_cuda=self._use_cuda
+            )
 
             dec_inputs = tf.zeros(shape=tensor_shape, dtype=tf.float32)
             dec_outputs, _ = tf.nn.bidirectional_dynamic_rnn(
@@ -168,19 +195,21 @@ class TextAttention(object):
                 alpha = tf.divide(inner_product, context_norm_sqrd)
                 projection = tf.einsum("ij,ik->ijk", alpha, self.context, name="projection_op")
 
-            dec_weight_ = tf.get_variable("dec_weight",
-                                          shape=[input_dim, self._dims],
-                                          dtype=tf.float32,
-                                          initializer=tf.truncated_normal_initializer(-0.01, 0.01)
-                                          )
+            weight_ = tf.get_variable(
+                "dense_weight",
+                shape=[input_dim, self._dims],
+                dtype=tf.float32,
+                initializer=tf.truncated_normal_initializer(-0.01, 0.01)
+            )
 
-            dec_bias_ = tf.get_variable("dec_bias",
-                                        shape=[self._dims],
-                                        dtype=tf.float32,
-                                        initializer=tf.zeros_initializer()
-                                        )
+            bias_ = tf.get_variable(
+                "dec_bias",
+                shape=[self._dims],
+                dtype=tf.float32,
+                initializer=tf.zeros_initializer()
+            )
 
-            output_ = tf.einsum('ijk,kl->ijl', projection, dec_weight_) + dec_bias_
+            output_ = tf.einsum('ijk,kl->ijl', projection, weight_) + bias_
             return output_
 
     def generalized_cosine(self, in_seq, out_seq):
@@ -216,10 +245,12 @@ class TextAttention(object):
                 out_seq=tf.nn.l2_normalize(self._output, axis=2)
             )
 
-        # with tf.variable_scope('l2_loss'):
-        #     weights = tf.trainable_variables()
-        #     l2_losses = [tf.nn.l2_loss(v) for v in weights if 'bias' not in v.name]
-        #     loss += (2e-6 / 2) * tf.add_n(l2_losses)
+        with tf.variable_scope('l2_loss'):
+            weights = tf.trainable_variables()
+
+            # only perform L2-regularization on the fully connected layer(s)
+            l2_losses = [tf.nn.l2_loss(v) for v in weights if 'dense_weight' in v.name]
+            loss += 1e-2 * tf.add_n(l2_losses)
         return loss
 
     @property

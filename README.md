@@ -50,6 +50,18 @@ can then run
 tensorboard --logdir text_embedding
 ```
 
+The default behavior for the text dictionary class is to take the 
+top N tokens based strictly on term-frequencies in the corpus. It 
+is possible to weight the tokens by TF-IDF values at training time 
+and take the top N tokens based on the largest TF-IDF values. This 
+can be done by passing the `--idf 1` flag to the training script.
+
+For the LSTM, there is a CUDnn-optimized operation available if you 
+have a CUDA enabled GPU. To take advantage advantage of this you 
+cand pass the `--cuda 1` flag to the training script. The presence 
+of a GPU will be validated and if one cannot be found then training 
+will default to the CPU. 
+
 To train a model with a custom data set, simply replace the 
 data set(s) in [/data](text2vec/data) with your own.
 
