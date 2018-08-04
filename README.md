@@ -56,9 +56,9 @@ is possible to weight the tokens by TF-IDF values at training time
 and take the top N tokens based on the largest TF-IDF values. This 
 can be done by passing the `--idf 1` flag to the training script.
 
-For the LSTM, there is a CUDnn-optimized operation available if you 
+For the LSTM, there is a cuDNN-optimized operation available if you 
 have a CUDA enabled GPU. To take advantage advantage of this you 
-cand pass the `--cuda 1` flag to the training script. The presence 
+can pass the `--cuda 1` flag to the training script. The presence 
 of a GPU will be validated and if one cannot be found then training 
 will default to the CPU. 
 

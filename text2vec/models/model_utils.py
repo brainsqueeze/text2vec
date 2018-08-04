@@ -10,11 +10,11 @@ def build_cell(num_layers, num_hidden, keep_prob, use_cuda=False):
         else:
             cell = tf.nn.rnn_cell.LSTMCell(
                 num_hidden,
-                # forget_bias=0.0,
+                forget_bias=0.0,
                 initializer=tf.random_uniform_initializer(-0.1, 0.1),
             )
 
-        cell = tf.nn.rnn_cell.DropoutWrapper(cell, output_keep_prob=keep_prob)
+        cell = tf.nn.rnn_cell.DropoutWrapper(cell=cell, output_keep_prob=keep_prob)
         cells.append(cell)
 
     if num_layers > 1:
