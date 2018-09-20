@@ -24,6 +24,9 @@ class Embedder(object):
         self._seq_input = tf.placeholder(dtype=tf.int32, shape=[None, self._max_seq_len])
         self._keep_prob = tf.placeholder_with_default([1.0, 1.0, 1.0], shape=(3,))
 
+        use_cuda = os.environ["CUDA"]
+        use_cuda = True if use_cuda.lower() == 'true' else False
+
         self._model = TextAttention(
             input_x=self._seq_input,
             embedding_size=100,
@@ -31,6 +34,7 @@ class Embedder(object):
             keep_prob=self._keep_prob,
             num_hidden=num_hidden,
             attention_size=attention_size,
+            use_cuda=use_cuda,
             is_training=False
         )
 

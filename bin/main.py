@@ -173,13 +173,13 @@ def train(model_folder, num_tokens=10000, num_hidden=128, attention_size=128,
         model.assign_clip_norm(sess, 10.0)
 
         for epoch in range(num_epochs):
-            print("\t Epoch: %d" % (epoch + 1))
+            print("\t Epoch: {0}".format(epoch + 1))
+            train_summary = tf.Summary()
             i = 1
 
             for x in mini_batches(full_text, size=batch_size, n_batches=num_batches, max_len=max_seq_len, seed=epoch):
                 if x.shape[0] == 0:
                     continue
-                train_summary, dev_summary = tf.Summary(), tf.Summary()
 
                 loss_val, gradient, _ = sess.run(
                     [model.loss, model.gradient_norm, model.train],
@@ -198,11 +198,11 @@ def train(model_folder, num_tokens=10000, num_hidden=128, attention_size=128,
                 # summary_writer_train.add_summary(merged, epoch * num_batches + i)
 
                 summary_writer_train.add_summary(train_summary, epoch * num_batches + i)
-                summary_writer_train.flush()
 
                 if i % (num_batches // 10) == 0:
-                    print("\t\t iteration {0} - loss: {1}".format(str(i), str(loss_val)))
+                    print("\t\t iteration {0} - loss: {1}".format(i, loss_val))
                 i += 1
+            summary_writer_train.flush()
 
             dev_summary = tf.Summary()
             cv_loss = sess.run(model.loss, feed_dict={seq_input: cv_x, keep_prob: keep_probabilities})
@@ -225,10 +225,8 @@ def main():
     parser.add_argument("--mb_size", type=int, help="Number of examples in each mini-batch.", default=32)
     parser.add_argument("--num_mb", type=int, help="Number of mini-batches per epoch.", default=40)
     parser.add_argument("--epochs", type=int, help="Number of epochs to run.", default=100000)
-    parser.add_argument("--cuda", type=int,
-                        help="Flag set to determine whether to use the GPU", default=0, choices=[0, 1])
-    parser.add_argument("--idf", type=int, help="Flag set to use TF-IDF values for N-token selection.",
-                        default=0, choices=[0, 1])
+    parser.add_argument("--cuda", action='store_true', help="Flag set to determine whether to use the GPU")
+    parser.add_argument("--idf", action='store_true', help="Flag set to use TF-IDF values for N-token selection.")
 
     args = parser.parse_args()
 
@@ -249,7 +247,9 @@ def main():
             use_cuda=bool(args.cuda)
         )
     elif args.run == "infer":
+        assert isinstance(args.cuda, bool)
         os.environ["MODEL_PATH"] = args.model_name
+        os.environ["CUDA"] = str(args.cuda)
 
         from .text_summarize import run_server
         run_server(port=8008, is_production=False)
