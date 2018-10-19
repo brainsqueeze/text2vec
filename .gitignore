@@ -1,5 +1,9 @@
 .idea/
 .vscode/
 **/__pycache__
-**/.eslintrc.js
+
+demo/.eslintrc.js
+**/package-lock.json
 **/jsconfig.json
+
+**/node_modules

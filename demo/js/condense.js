@@ -13,7 +13,7 @@ function formatOutput (ajaxData, container) {
       let score = data[i].relevanceScore
       let lightness = (1 - score) * 100.0
 
-      outputHtml += '<p class="response-line" style="color: hsl(140, 100%,' + lightness + '%)">' + text + '</p>'
+      outputHtml += `<p class="response-line" style="color: hsl(140, 100%, ${lightness}%)">${text}</p>`
     }
     container.append(outputHtml)
   }
@@ -27,7 +27,7 @@ $(document).ready(function () {
 
   $('#go').on('click', function () {
     let text = $('.text-input.main').val()
-    let data = {body: text}
+    let data = { body: text }
 
     $('.response-container').empty()
 
