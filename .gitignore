@@ -2,8 +2,19 @@
 .vscode/
 **/__pycache__
 
-demo/.eslintrc.js
+# JavaScript configs and dependencies
+**/.eslintrc.json
 **/package-lock.json
 **/jsconfig.json
-
 **/node_modules
+
+# ignore trained model files
+**/training/
+**/validation/
+**/checkpoint
+**/*.data-*
+**/*.meta
+**/*.index
+**/lookup.pkl
+**/metadata.tsv
+**/model.json
