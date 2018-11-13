@@ -58,9 +58,10 @@ can be done by passing the `--idf 1` flag to the training script.
 
 For the LSTM, there is a cuDNN-optimized operation available if you 
 have a CUDA enabled GPU. To take advantage advantage of this you 
-can pass the `--cuda 1` flag to the training script. The presence 
-of a GPU will be validated and if one cannot be found then training 
-will default to the CPU. 
+must be using a cuDNN-enabled build of TensorFlow; if you have CUDA 
+and cuDNN installed you can simply run `pip install -r requirements-gpu.txt`. 
+The GPU will automatically be detected and used if present, otherwise 
+it will fall back to the CPU for training and inferencing. 
 
 To train a model with a custom data set, simply replace the 
 data set(s) in [/data](text2vec/data) with your own.

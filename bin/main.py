@@ -225,10 +225,10 @@ def main():
     parser.add_argument("--mb_size", type=int, help="Number of examples in each mini-batch.", default=32)
     parser.add_argument("--num_mb", type=int, help="Number of mini-batches per epoch.", default=40)
     parser.add_argument("--epochs", type=int, help="Number of epochs to run.", default=100000)
-    parser.add_argument("--cuda", action='store_true', help="Flag set to determine whether to use the GPU")
     parser.add_argument("--idf", action='store_true', help="Flag set to use TF-IDF values for N-token selection.")
 
     args = parser.parse_args()
+    use_cuda = tf.test.is_gpu_available()
 
     if args.run is None or args.model_name is None:
         print(args.print_help())
@@ -244,12 +244,11 @@ def main():
             num_batches=args.num_mb,
             num_epochs=args.epochs,
             use_tf_idf=bool(args.idf),
-            use_cuda=bool(args.cuda)
+            use_cuda=use_cuda
         )
     elif args.run == "infer":
         assert isinstance(args.cuda, bool)
         os.environ["MODEL_PATH"] = args.model_name
-        os.environ["CUDA"] = str(args.cuda)
 
         from .text_summarize import run_server
         run_server(port=8008, is_production=False)
