@@ -19,12 +19,12 @@ class Tensor2Tensor(object):
             self._seq_lengths = tf.count_nonzero(input_x, axis=1, name='sequence-lengths')
             embeddings = tf.Variable(
                 tf.random_uniform([vocab_size, self._dims], -1.0, 1.0),
-                name='word-embeddings',
+                name='word_embeddings',
                 dtype=tf.float32,
                 trainable=True
             )
-            x = tf.nn.embedding_lookup(embeddings, input_x)
-            x = tf.nn.dropout(x, keep_prob=self._input_keep_prob)
+            x_embedded = tf.nn.embedding_lookup(embeddings, input_x)
+            x = tf.nn.dropout(x_embedded, keep_prob=self._input_keep_prob)
 
         with tf.variable_scope('positional-encoder'):
             encoding = self.__positional_encoding(x)
@@ -36,17 +36,55 @@ class Tensor2Tensor(object):
             x_encoded = self.__point_wise_feed_forward(x_encoded) + x_encoded
             x_encoded = self.layer_norm_compute(x_encoded)
 
-        self.__embedded = self.__attention(x_encoded)
+        self.__embedded = self.__bahdanau_attention(x_encoded)
 
         if is_training:
             with tf.variable_scope('sequence-reconstructor'):
                 x_out = self.__projection(x_encoded)
-                inner = tf.einsum('ijk,lk->ijl', x_out, embeddings)
-                inner /= tf.linalg.norm(inner, axis=-1, keepdims=True)
+                x_out = tf.einsum('ijk,lk->ijl', x_out, embeddings)
 
-                max_args = tf.argmax(inner, axis=-1, output_type=tf.int32)
-                loss = self.__cost(expected_sequence=input_x, reconstructed_sequence=max_args)
-                print(loss)
+            with tf.variable_scope('cost'):
+                self.loss = self.__cost(target_sequences=input_x, sequence_logits=x_out)
+
+            with tf.variable_scope('optimizer'):
+                self._lr = tf.Variable(0.0, trainable=False)
+                self._clip_norm = tf.Variable(0.0, trainable=False)
+                t_vars = tf.trainable_variables()
+
+                grads, _ = tf.clip_by_global_norm(tf.gradients(self.loss, t_vars), self._clip_norm)
+                opt = tf.train.AdamOptimizer(self._lr)
+
+                # compute the gradient norm - only for logging purposes - remove if greatly affecting performance
+                self.gradient_norm = tf.sqrt(sum([tf.norm(t) ** 2 for t in grads]), name="gradient_norm")
+
+                self.train = opt.apply_gradients(
+                    zip(grads, t_vars),
+                    global_step=tf.train.get_or_create_global_step()
+                )
+
+                self._new_lr = tf.placeholder(tf.float32, shape=[], name="new_learning_rate")
+                self._lr_update = tf.assign(self._lr, self._new_lr)
+
+                self._new_clip_norm = tf.placeholder(tf.float32, shape=[], name="new_clip_norm")
+                self._clip_norm_update = tf.assign(self._clip_norm, self._new_clip_norm)
+
+    def assign_lr(self, session, lr_value):
+        """
+        Updates the learning rate
+        :param session: (TensorFlow Session)
+        :param lr_value: (float)
+        """
+
+        session.run(self._lr_update, feed_dict={self._new_lr: lr_value})
+
+    def assign_clip_norm(self, session, norm_value):
+        """
+        Updates the gradient normalization factor
+        :param session: (TensorFlow Session)
+        :param norm_value: (float)
+        """
+
+        session.run(self._clip_norm_update, feed_dict={self._new_clip_norm: norm_value})
 
     def __positional_encoding(self, x):
         """
@@ -147,9 +185,6 @@ class Tensor2Tensor(object):
             dtype=tf.float32,
             initializer=tf.zeros_initializer()
         )
-        # output = tf.nn.relu(tf.nn.xw_plus_b(x, weights=w_1, biases=b_1))
-        # output = tf.nn.xw_plus_b(output, weights=w_2, biases=b_2)
-
         output = tf.nn.relu(tf.einsum('ijk,lk->ijk', x, w_1) + b_1)
         output = tf.einsum('ijk,lk->ijk', output, w_2) + b_2
         return output
@@ -161,8 +196,8 @@ class Tensor2Tensor(object):
         norm_x = (x - mean) * tf.rsqrt(variance + epsilon)
         return norm_x * scale + bias
 
-    def __attention(self, x):
-        with tf.variable_scope('bahdanau-self-attention'):
+    def __bahdanau_attention(self, x):
+        with tf.variable_scope('bahdanau-self-context'):
             hidden_size = self._dims // 2
 
             in_dim = x.get_shape().as_list()[-1]
@@ -196,17 +231,16 @@ class Tensor2Tensor(object):
             projection = tf.einsum("ij,ik->ijk", alpha, self.__embedded, name="projection_op")
             return projection
 
-    def __cost(self, expected_sequence, reconstructed_sequence):
-        with tf.variable_scope('cost'):
-            epsilon = tf.constant(1e-8, dtype=tf.float32, shape=[1])
-            length = tf.cast(self._seq_lengths, dtype=tf.float32)
-            length = tf.add(length, epsilon)
+    def __cost(self, target_sequences, sequence_logits):
+        epsilon = tf.constant(1e-8, dtype=tf.float32, shape=[1])
+        length = tf.cast(self._seq_lengths, dtype=tf.float32)
+        length = tf.add(length, epsilon)
 
-            expected_sequence = tf.cast(expected_sequence, dtype=tf.float32)
-            reconstructed_sequence = tf.cast(reconstructed_sequence, dtype=tf.float32)
+        loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
+            logits=sequence_logits,
+            labels=target_sequences
+        )
+        loss = tf.reduce_sum(loss, axis=-1) / length
+        loss = tf.reduce_mean(loss)
 
-            mse = (expected_sequence - reconstructed_sequence) ** 2
-            mse = tf.reduce_sum(mse, axis=-1) / length
-            mse = tf.reduce_mean(mse)
-
-            return mse
+        return loss

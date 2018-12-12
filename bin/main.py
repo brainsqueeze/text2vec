@@ -107,7 +107,7 @@ def train(model_folder, num_tokens=10000, num_hidden=128, attention_size=128,
     cv_x = np.array([pad_sequence(seq, max_seq_len) for seq in cv_x])
     keep_probabilities = [1.0, 0.7, 1.0]
 
-    log("Compiling seq2seq automorphism model")
+    log("Building computation graph")
     seq_input = tf.placeholder(dtype=tf.int32, shape=[None, max_seq_len])
     keep_prob = tf.placeholder_with_default([1.0, 1.0, 1.0], shape=(3,))
 
@@ -140,9 +140,10 @@ def train(model_folder, num_tokens=10000, num_hidden=128, attention_size=128,
 
     model = Tensor2Tensor(
         input_x=seq_input,
-        embedding_size=300,
+        embedding_size=256,
         vocab_size=vocab_size,
         keep_prob=keep_prob,
+        layers=2,
         is_training=True
     )
 
@@ -177,8 +178,10 @@ def train(model_folder, num_tokens=10000, num_hidden=128, attention_size=128,
         embedding_conf.metadata_path = log_dir + "/metadata.tsv"
         tf.contrib.tensorboard.plugins.projector.visualize_embeddings(summary_writer_train, config_)
 
-        model.assign_lr(sess, 1.0)
-        model.assign_clip_norm(sess, 10.0)
+        # model.assign_lr(sess, 1.0)
+        model.assign_lr(sess, 0.1)
+        # model.assign_clip_norm(sess, 10.0)
+        model.assign_clip_norm(sess, 100.0)
 
         for epoch in range(num_epochs):
             print("\t Epoch: {0}".format(epoch + 1))
@@ -212,11 +215,11 @@ def train(model_folder, num_tokens=10000, num_hidden=128, attention_size=128,
                 i += 1
             summary_writer_train.flush()
 
-            dev_summary = tf.Summary()
-            cv_loss = sess.run(model.loss, feed_dict={seq_input: cv_x, keep_prob: keep_probabilities})
-            dev_summary.value.add(tag="cost", simple_value=cv_loss)
-            summary_writer_dev.add_summary(dev_summary, epoch * num_batches + i)
-            summary_writer_dev.flush()
+            # dev_summary = tf.Summary()
+            # cv_loss = sess.run(model.loss, feed_dict={seq_input: cv_x, keep_prob: keep_probabilities})
+            # dev_summary.value.add(tag="cost", simple_value=cv_loss)
+            # summary_writer_dev.add_summary(dev_summary, epoch * num_batches + i)
+            # summary_writer_dev.flush()
 
             lstm_file_name = saver.save(sess, log_dir + '/embedding_model', global_step=int((epoch + 1) * i))
 
