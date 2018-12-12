@@ -1,5 +1,5 @@
 from text2vec.preprocessing import EmbeddingLookup
-from text2vec.models import TextAttention
+from text2vec.models import TextAttention, Tensor2Tensor
 import tensorflow as tf
 from tensorflow.python.client.device_lib import list_local_devices
 import numpy as np
@@ -127,15 +127,23 @@ def train(model_folder, num_tokens=10000, num_hidden=128, attention_size=128,
     json.dump(meta_data, file_sys, indent=2)
     file_sys.close()
 
-    model = TextAttention(
+    # model = TextAttention(
+    #     input_x=seq_input,
+    #     embedding_size=100,
+    #     vocab_size=vocab_size,
+    #     keep_prob=keep_prob,
+    #     num_hidden=num_hidden,
+    #     attention_size=attention_size,
+    #     is_training=True,
+    #     use_cuda=use_cuda
+    # )
+
+    model = Tensor2Tensor(
         input_x=seq_input,
-        embedding_size=100,
+        embedding_size=300,
         vocab_size=vocab_size,
         keep_prob=keep_prob,
-        num_hidden=num_hidden,
-        attention_size=attention_size,
-        is_training=True,
-        use_cuda=use_cuda
+        is_training=True
     )
 
     lstm_file_name = None
