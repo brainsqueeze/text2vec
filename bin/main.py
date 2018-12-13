@@ -110,7 +110,7 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
     log(f"Padding sequences in corpus to length {max_seq_len}")
     full_text = np.array([pad_sequence(seq, max_seq_len) for seq in full_text])
     cv_x = np.array([pad_sequence(seq, max_seq_len) for seq in cv_x])
-    keep_probabilities = [1.0, 0.7, 1.0]
+    keep_probabilities = [0.9, 0.9, 1.0]
 
     log("Building computation graph")
     seq_input = tf.placeholder(dtype=tf.int32, shape=[None, max_seq_len])
@@ -190,8 +190,7 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
 
         # model.assign_lr(sess, 1.0)
         model.assign_lr(sess, 0.01)
-        # model.assign_clip_norm(sess, 10.0)
-        model.assign_clip_norm(sess, 1000.0)
+        model.assign_clip_norm(sess, 100000.0)
 
         for epoch in range(num_epochs):
             print("\t Epoch: {0}".format(epoch + 1))

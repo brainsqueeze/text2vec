@@ -12,8 +12,9 @@ class Tensor2Tensor(object):
 
         self._batch_size, self._time_steps = input_x.get_shape().as_list()
         self._dims = embedding_size
+        self._num_labels = vocab_size
         self._layers = layers
-        self._input_keep_prob, _, self._dense_keep_prob = tf.unstack(keep_prob)
+        self._input_keep_prob, self._hidden_keep_prob, self._dense_keep_prob = tf.unstack(keep_prob)
 
         embeddings = tf.Variable(
             tf.random_uniform([vocab_size, self._dims], -1.0, 1.0),
@@ -25,11 +26,10 @@ class Tensor2Tensor(object):
         # Input pipeline
         with tf.variable_scope('input'):
             self._seq_lengths = tf.count_nonzero(input_x, axis=1, name='sequence-lengths')
-            x_embedded = tf.nn.embedding_lookup(embeddings, input_x)
-            x = tf.nn.dropout(x_embedded, keep_prob=self._input_keep_prob)
-
+            x = tf.nn.embedding_lookup(embeddings, input_x)
             encoding = self.__positional_encoding(x)
             x = x + encoding
+            x = tf.nn.dropout(x, keep_prob=self._input_keep_prob)
 
         with tf.variable_scope('encoder'):
             x_encoded = self.__multi_head_attention(queries=x, keys=x, values=x) + x
@@ -43,11 +43,10 @@ class Tensor2Tensor(object):
                 decode_x = tf.concat([input_x[:, 1:], tf.zeros_like(input_x[:, :1])], axis=1)
             else:
                 decode_x = tf.zeros_like(input_x, dtype=tf.float32)
-            x_embedded = tf.nn.embedding_lookup(embeddings, decode_x)
-            x = tf.nn.dropout(x_embedded, keep_prob=self._input_keep_prob)
-
+            x = tf.nn.embedding_lookup(embeddings, decode_x)
             encoding = self.__positional_encoding(x)
             x = x + encoding
+            x = tf.nn.dropout(x, keep_prob=self._input_keep_prob)
 
         with tf.variable_scope('decoder'):
             # todo: in the first multi-head-attention mask out future sequence values so learning only depends on past
@@ -73,8 +72,9 @@ class Tensor2Tensor(object):
                 self._clip_norm = tf.Variable(0.0, trainable=False)
                 t_vars = tf.trainable_variables()
 
-                grads, _ = tf.clip_by_global_norm(tf.gradients(self.loss, t_vars), self._clip_norm)
-                opt = tf.train.AdamOptimizer(self._lr)
+                # grads, _ = tf.clip_by_global_norm(tf.gradients(self.loss, t_vars), self._clip_norm)
+                grads = tf.gradients(self.loss, t_vars)
+                opt = tf.train.AdamOptimizer(self._lr, beta1=0.9, beta2=0.98, epsilon=1e-9)
 
                 # compute the gradient norm - only for logging purposes - remove if greatly affecting performance
                 self.gradient_norm = tf.sqrt(sum([tf.norm(t) ** 2 for t in grads]), name="gradient_norm")
@@ -143,6 +143,9 @@ class Tensor2Tensor(object):
         with tf.variable_scope('multi-head-attention'):
             key_dim = self._dims // self._layers
             heads = []
+            queries = tf.nn.dropout(queries, self._hidden_keep_prob)
+            keys = tf.nn.dropout(keys, self._hidden_keep_prob)
+            values = tf.nn.dropout(values, self._hidden_keep_prob)
 
             w = tf.get_variable(
                 "total-head-weight",
@@ -188,6 +191,9 @@ class Tensor2Tensor(object):
         with tf.variable_scope('masked-multi-head-attention'):
             key_dim = self._dims // self._layers
             heads = []
+            queries = tf.nn.dropout(queries, self._hidden_keep_prob)
+            keys = tf.nn.dropout(keys, self._hidden_keep_prob)
+            values = tf.nn.dropout(values, self._hidden_keep_prob)
 
             w = tf.get_variable(
                 "total-head-weight",
@@ -309,8 +315,19 @@ class Tensor2Tensor(object):
             logits=sequence_logits,
             labels=target_sequences
         )
+
+        # smoothing = 0.1
+        # targets = tf.one_hot(target_sequences, depth=self._num_labels, on_value=1.0, off_value=0.0, axis=-1)
+        # loss = tf.losses.softmax_cross_entropy(
+        #     logits=sequence_logits,
+        #     onehot_labels=targets,
+        #     label_smoothing=smoothing,
+        #     reduction=tf.losses.Reduction.NONE
+        # )
+
         loss = tf.reduce_sum(loss, axis=-1) / length
-        return tf.reduce_mean(loss)
+        loss = tf.reduce_mean(loss)
+        return loss
 
     @property
     def embedding(self):

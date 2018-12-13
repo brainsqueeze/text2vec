@@ -15,14 +15,13 @@ class TextAttention(object):
     vectors, and then using the context vectors onto which I project the target sequence.
     """
 
-    def __init__(self, input_x, vocab_size, embedding_size, keep_prob, num_hidden, attention_size
-                 , is_training=False, use_cuda=False):
+    def __init__(self, input_x, vocab_size, embedding_size, keep_prob, num_hidden, attention_size, is_training=False):
+        self.__use_gpu = tf.test.is_gpu_available()
+
         self._batch_size, self._time_steps = input_x.get_shape().as_list()
         self._dims = embedding_size
         self._num_hidden = num_hidden
         self._attention_size = attention_size
-
-        self._use_cuda = use_cuda
 
         self._input_keep_prob, self._lstm_keep_prob, self._dense_keep_prob = tf.unstack(keep_prob)
 
@@ -105,13 +104,13 @@ class TextAttention(object):
                 num_layers=num_layers,
                 num_hidden=self._num_hidden,
                 keep_prob=self._lstm_keep_prob,
-                use_cuda=self._use_cuda
+                use_cuda=self.__use_gpu
             )
             backward = mu.build_cell(
                 num_layers=num_layers,
                 num_hidden=self._num_hidden,
                 keep_prob=self._lstm_keep_prob,
-                use_cuda=self._use_cuda
+                use_cuda=self.__use_gpu
             )
 
             output_seq, final_state = tf.nn.bidirectional_dynamic_rnn(
@@ -158,13 +157,13 @@ class TextAttention(object):
                 num_layers=num_layers,
                 num_hidden=self._num_hidden,
                 keep_prob=self._lstm_keep_prob,
-                use_cuda=self._use_cuda
+                use_cuda=self.__use_gpu
             )
             backward = mu.build_cell(
                 num_layers=num_layers,
                 num_hidden=self._num_hidden,
                 keep_prob=self._lstm_keep_prob,
-                use_cuda=self._use_cuda
+                use_cuda=self.__use_gpu
             )
 
             dec_inputs = tf.zeros(shape=tensor_shape, dtype=tf.float32)
