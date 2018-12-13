@@ -67,11 +67,16 @@ def mini_batches(corpus, size, n_batches, max_len, seed):
         yield np.array([pad_sequence(corpus[index], max_len) for index in s[mb * size: (mb + 1) * size]])
 
 
-def train(model_folder, num_tokens=10000, num_hidden=128, attention_size=128,
-          batch_size=32, num_batches=50, num_epochs=10,
-          use_tf_idf=False, use_cuda=False):
+def compute_angles(vectors):
+    vectors /= np.linalg.norm(vectors, axis=1, keepdims=True)
+    cosine = np.dot(vectors, vectors.T)
+    cosine = np.clip(cosine, -1, 1)
+    degrees = np.arccos(cosine) * (180 / np.pi)
+    return degrees
 
-    use_cuda = use_cuda and validate_hardware()
+
+def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, attention_size=128, layers=8,
+          batch_size=32, num_batches=50, num_epochs=10, use_tf_idf=False):
 
     log_dir = root + "/../../text2vec/" + model_folder
     if not os.path.exists(log_dir):
@@ -140,10 +145,10 @@ def train(model_folder, num_tokens=10000, num_hidden=128, attention_size=128,
 
     model = Tensor2Tensor(
         input_x=seq_input,
-        embedding_size=256,
+        embedding_size=embedding_size,
         vocab_size=vocab_size,
         keep_prob=keep_prob,
-        layers=2,
+        layers=layers,
         is_training=True
     )
 
@@ -160,6 +165,11 @@ def train(model_folder, num_tokens=10000, num_hidden=128, attention_size=128,
         allow_soft_placement=True,
         log_device_placement=False
     )
+    test_sentences = [
+        "The movie was great!",
+        "The movie was terrible."
+    ]
+    text_x = np.array([pad_sequence(seq, max_seq_len) for seq in lookup.transform(test_sentences)])
 
     with tf.Session(config=sess_config) as sess:
         saver = tf.train.Saver()
@@ -173,15 +183,15 @@ def train(model_folder, num_tokens=10000, num_hidden=128, attention_size=128,
         # add metadata to embeddings for visualization purposes
         config_ = tf.contrib.tensorboard.plugins.projector.ProjectorConfig()
         embedding_conf = config_.embeddings.add()
-        embeddings = sess.graph.get_tensor_by_name("embedding/word_embeddings:0")
+        embeddings = sess.graph.get_tensor_by_name("word-embeddings:0")
         embedding_conf.tensor_name = embeddings.name
         embedding_conf.metadata_path = log_dir + "/metadata.tsv"
         tf.contrib.tensorboard.plugins.projector.visualize_embeddings(summary_writer_train, config_)
 
         # model.assign_lr(sess, 1.0)
-        model.assign_lr(sess, 0.1)
+        model.assign_lr(sess, 0.01)
         # model.assign_clip_norm(sess, 10.0)
-        model.assign_clip_norm(sess, 100.0)
+        model.assign_clip_norm(sess, 1000.0)
 
         for epoch in range(num_epochs):
             print("\t Epoch: {0}".format(epoch + 1))
@@ -203,17 +213,26 @@ def train(model_folder, num_tokens=10000, num_hidden=128, attention_size=128,
                 train_summary.value.add(tag="cost", simple_value=loss_val)
                 train_summary.value.add(tag="gradient_norm", simple_value=gradient)
 
-                # for var in tf.trainable_variables():
-                #     tf.summary.histogram(var.op.name, var)
-                # merged = sess.run(tf.summary.merge_all())
-                # summary_writer_train.add_summary(merged, epoch * num_batches + i)
-
                 summary_writer_train.add_summary(train_summary, epoch * num_batches + i)
 
                 if i % (num_batches // 10) == 0:
                     print("\t\t iteration {0} - loss: {1}".format(i, loss_val))
+
+                    # for var in tf.trainable_variables():
+                    #     tf.summary.histogram(var.op.name, var)
+                    # merged = sess.run(tf.summary.merge_all())
+                    # summary_writer_train.add_summary(merged, epoch * num_batches + i)
                 i += 1
             summary_writer_train.flush()
+
+            vectors = sess.run(model.embedding, feed_dict={seq_input: text_x})
+            angle = compute_angles(vectors)[0, 1]
+            print(f"The 'angle' between `{'` and `'.join(test_sentences)}` is {angle} degrees")
+
+            test_case_summary = tf.Summary()
+            test_case_summary.value.add(tag="similarity angle", simple_value=angle)
+            summary_writer_dev.add_summary(test_case_summary, epoch * num_batches + i)
+            summary_writer_dev.flush()
 
             # dev_summary = tf.Summary()
             # cv_loss = sess.run(model.loss, feed_dict={seq_input: cv_x, keep_prob: keep_probabilities})
@@ -231,15 +250,16 @@ def main():
     parser.add_argument("run", choices=["train", "infer"], help="Run type.")
     parser.add_argument("model_name", type=str, help="Folder name in which to store model.")
     parser.add_argument("--tokens", type=int, help="Set the number of tokens to use.", default=10000)
+    parser.add_argument("--embedding", type=int, help="Set the dimensionality of the word embeddings.", default=256)
     parser.add_argument("--hidden", type=int, help="Number of hidden LSTM dimensions.", default=128)
     parser.add_argument("--attention_size", type=int, help="Dimension of attention mechanism weight.", default=128)
+    parser.add_argument("--layers", type=int, help="Number of self-attention layers.", default=8)
     parser.add_argument("--mb_size", type=int, help="Number of examples in each mini-batch.", default=32)
     parser.add_argument("--num_mb", type=int, help="Number of mini-batches per epoch.", default=40)
     parser.add_argument("--epochs", type=int, help="Number of epochs to run.", default=100000)
     parser.add_argument("--idf", action='store_true', help="Flag set to use TF-IDF values for N-token selection.")
 
     args = parser.parse_args()
-    use_cuda = tf.test.is_gpu_available()
 
     if args.run is None or args.model_name is None:
         print(args.print_help())
@@ -249,22 +269,21 @@ def main():
         train(
             model_folder=args.model_name,
             num_tokens=args.tokens,
+            embedding_size=args.embedding,
             num_hidden=args.hidden,
             attention_size=args.attention_size,
+            layers=args.layers,
             batch_size=args.mb_size,
             num_batches=args.num_mb,
             num_epochs=args.epochs,
-            use_tf_idf=bool(args.idf),
-            use_cuda=use_cuda
+            use_tf_idf=bool(args.idf)
         )
     elif args.run == "infer":
-        assert isinstance(args.cuda, bool)
         os.environ["MODEL_PATH"] = args.model_name
-
         from .text_summarize import run_server
         run_server(port=8008, is_production=False)
     else:
-        raise NotImplementedError("Only training is enabled right now.")
+        raise NotImplementedError("Only training and inferencing is enabled right now.")
     return
 
 

@@ -25,6 +25,11 @@ input text as the embedded vector representing the input.
 mechanism, but this method was chosen intentionally to be able to 
 leverage the attention vector as the embedding output.
 
+### Transformer model
+
+This is a tensor-to-tensor model adapted from the work in 
+[Attention Is All You Need](https://arxiv.org/abs/1706.03762).
+
 ## Training
 
 Executing the training algorithm is accomplished by 
@@ -95,3 +100,8 @@ python -m bin.main infer text_embedding
 where `text_embedding` should be replaced with the name of your model's log 
 directory.  A demonstration webpage is included in [demo](demo) at 
 [context.html](demo/context.html).
+
+## References
+
+1. D. Bahdanau, K. Cho, Y. Bengio [https://arxiv.org/abs/1409.0473](https://arxiv.org/abs/1409.0473)
+2. A. Vaswani, N. Shazeer, N. Parmar, J. Uszkoreit, L. Jones, A. N. Gomez, L. Kaiser, I. Polosukhin [https://arxiv.org/abs/1706.03762](https://arxiv.org/abs/1706.03762)
