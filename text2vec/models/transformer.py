@@ -55,16 +55,18 @@ class Tensor2Tensor(object):
             x_decoded = self.__multi_head_attention(values=x, keys=x, queries=x, mask_future=True) + x
             x_decoded = self.layer_norm_compute(x_decoded)
             x_decoded = self.__multi_head_attention(values=x_encoded, keys=x_encoded, queries=x_decoded) + x_decoded
+            self.__context = tf.layers.flatten(x_decoded)
             x_decoded = self.layer_norm_compute(x_decoded)
             x_decoded = self.__point_wise_feed_forward(x_decoded) + x_decoded
             x_decoded = self.layer_norm_compute(x_decoded)
 
-        self.__context = self.__local_attention(encoded=x_encoded, decoded=x_decoded)
+        # self.__context = self.__local_attention(encoded=x_encoded, decoded=x_decoded)
 
         if is_training:
             with tf.variable_scope('sequence-reconstructor'):
-                x_out = self.__projection(x_decoded)
-                x_out = tf.layers.dense(inputs=x_out, units=vocab_size, name="output-dense")
+                # x_out = self.__projection(x_decoded)
+                # x_out = tf.layers.dense(inputs=x_out, units=vocab_size, name="output-dense")
+                x_out = tf.layers.dense(inputs=x_decoded, units=vocab_size, name="output-dense")
 
             with tf.variable_scope('cost'):
                 self.loss = self.__cost(target_sequences=input_x, sequence_logits=x_out)
