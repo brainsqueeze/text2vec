@@ -16,6 +16,8 @@ class Tensor2Tensor(object):
         self._layers = layers
         self._input_keep_prob, self._hidden_keep_prob, self._dense_keep_prob = tf.unstack(keep_prob)
 
+        self.__count = 1  # keep track of re-used components for naming purposes
+
         embeddings = tf.Variable(
             tf.random_uniform([vocab_size, self._dims], -1.0, 1.0),
             name='word-embeddings',
@@ -40,7 +42,8 @@ class Tensor2Tensor(object):
         # Output pipeline
         with tf.variable_scope('output'):
             if is_training:
-                decode_x = tf.concat([input_x[:, 1:], tf.zeros_like(input_x[:, :1])], axis=1)
+                # shift right
+                decode_x = tf.concat([tf.zeros_like(input_x[:, :1]), input_x[:, :-1]], axis=1)
             else:
                 decode_x = tf.zeros_like(input_x, dtype=tf.float32)
             x = tf.nn.embedding_lookup(embeddings, decode_x)
@@ -49,8 +52,7 @@ class Tensor2Tensor(object):
             x = tf.nn.dropout(x, keep_prob=self._input_keep_prob)
 
         with tf.variable_scope('decoder'):
-            # todo: in the first multi-head-attention mask out future sequence values so learning only depends on past
-            x_decoded = self.__masked_multi_head_attention(values=x, keys=x, queries=x) + x
+            x_decoded = self.__multi_head_attention(values=x, keys=x, queries=x, mask_future=True) + x
             x_decoded = self.layer_norm_compute(x_decoded)
             x_decoded = self.__multi_head_attention(values=x_encoded, keys=x_encoded, queries=x_decoded) + x_decoded
             x_decoded = self.layer_norm_compute(x_decoded)
@@ -131,16 +133,19 @@ class Tensor2Tensor(object):
             return encoder
 
     @staticmethod
-    def scalar_dot_product_attention(query, key, value):
+    def scalar_dot_product_attention(query, key, value, mask_future=False):
         with tf.variable_scope('scalar-dot-attention'):
             numerator = tf.einsum('ijk,ilk->ijl', query, key)
             denominator = tf.sqrt(tf.cast(tf.shape(key)[1], dtype=tf.float32))
 
             x_ = tf.nn.softmax(numerator / denominator)
+
+            if mask_future:
+                x_ = tf.linalg.band_part(x_, num_lower=-1, num_upper=0, name='future-mask')
             return tf.einsum('ijk,ikl->ijl', x_, value)
 
-    def __multi_head_attention(self, queries, keys, values):
-        with tf.variable_scope('multi-head-attention'):
+    def __multi_head_attention(self, queries, keys, values, mask_future=False):
+        with tf.variable_scope('multi-head-attention-{iteration}'.format(iteration=self.__count)):
             key_dim = self._dims // self._layers
             heads = []
             queries = tf.nn.dropout(queries, self._hidden_keep_prob)
@@ -180,59 +185,13 @@ class Tensor2Tensor(object):
                     head = self.scalar_dot_product_attention(
                         query=tf.einsum('ijk,kl->ijl', queries, w_q),
                         key=tf.einsum('ijk,kl->ijl', keys, w_k),
-                        value=tf.einsum('ijk,kl->ijl', values, w_v)
+                        value=tf.einsum('ijk,kl->ijl', values, w_v),
+                        mask_future=mask_future
                     )
                     heads.append(head)
 
             total_head = tf.concat(heads, axis=-1)
-            return tf.einsum('ijk,kl->ijl', total_head, w)
-
-    def __masked_multi_head_attention(self, queries, keys, values):
-        with tf.variable_scope('masked-multi-head-attention'):
-            key_dim = self._dims // self._layers
-            heads = []
-            queries = tf.nn.dropout(queries, self._hidden_keep_prob)
-            keys = tf.nn.dropout(keys, self._hidden_keep_prob)
-            values = tf.nn.dropout(values, self._hidden_keep_prob)
-
-            w = tf.get_variable(
-                "total-head-weight",
-                shape=[self._layers * key_dim, self._dims],
-                dtype=tf.float32,
-                initializer=tf.truncated_normal_initializer(-0.01, 0.01)
-            )
-
-            for i in range(self._layers):
-                with tf.variable_scope("head-{layer}".format(layer=i)):
-                    w_q = tf.get_variable(
-                        "query-weight",
-                        shape=[self._dims, key_dim],
-                        dtype=tf.float32,
-                        initializer=tf.truncated_normal_initializer(-0.01, 0.01)
-                    )
-
-                    w_k = tf.get_variable(
-                        "key-weight",
-                        shape=[self._dims, key_dim],
-                        dtype=tf.float32,
-                        initializer=tf.truncated_normal_initializer(-0.01, 0.01)
-                    )
-
-                    w_v = tf.get_variable(
-                        "value-weight",
-                        shape=[self._dims, key_dim],
-                        dtype=tf.float32,
-                        initializer=tf.truncated_normal_initializer(-0.01, 0.01)
-                    )
-
-                    head = self.scalar_dot_product_attention(
-                        query=tf.einsum('ijk,kl->ijl', queries, w_q),
-                        key=tf.einsum('ijk,kl->ijl', keys, w_k),
-                        value=tf.einsum('ijk,kl->ijl', values, w_v)
-                    )
-                    heads.append(head)
-
-            total_head = tf.concat(heads, axis=-1)
+            self.__count += 1
             return tf.einsum('ijk,kl->ijl', total_head, w)
 
     def __point_wise_feed_forward(self, x):
