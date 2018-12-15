@@ -59,7 +59,7 @@ class Tensor2Tensor(object):
             x_decoded = self.__point_wise_feed_forward(x_decoded) + x_decoded
             x_decoded = self.layer_norm_compute(x_decoded)
 
-        self.__context = self.__bahdanau_attention(encoded=x_encoded, decoded=x_decoded)
+        self.__context = self.__local_attention(encoded=x_encoded, decoded=x_decoded)
 
         if is_training:
             with tf.variable_scope('sequence-reconstructor'):
@@ -235,22 +235,22 @@ class Tensor2Tensor(object):
             norm_x = (x - mean) * tf.rsqrt(variance + epsilon)
             return norm_x * scale + bias
 
-    def __bahdanau_attention(self, encoded, decoded):
-        with tf.variable_scope('bahdanau-attention'):
+    def __local_attention(self, encoded, decoded):
+        with tf.variable_scope('local-attention'):
             weight = tf.get_variable(
                 "weight",
-                shape=[self._time_steps, self._dims],
+                shape=[self._time_steps, self._time_steps],
                 dtype=tf.float32,
                 initializer=tf.contrib.layers.xavier_initializer(uniform=True)
             )
             b_omega = tf.get_variable("b_omega", shape=[self._dims], initializer=tf.zeros_initializer())
             u_omega = tf.get_variable("u_omega", shape=[self._dims], initializer=tf.zeros_initializer())
 
-            v = tf.einsum('ilk,ld,ijd->ijk', encoded, weight, decoded) + b_omega
+            v = tf.tanh(tf.einsum('imj,mn,ink->ijk', encoded, weight, decoded) + b_omega)
             vu = tf.einsum("ijl,l->ij", v, u_omega, name="Bahdanau_score")
             alphas = tf.nn.softmax(vu, name="attention_weights")
 
-            output = tf.reduce_sum(encoded * tf.expand_dims(alphas, -1), 1, name="context_vector")
+            output = tf.reduce_sum(encoded * tf.expand_dims(alphas, axis=1), axis=1, name="context_vector")
             return output
 
     def __projection(self, x):
