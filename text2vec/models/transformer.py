@@ -138,10 +138,12 @@ class Tensor2Tensor(object):
             numerator = tf.einsum('ijk,ilk->ijl', query, key)
             denominator = tf.sqrt(tf.cast(tf.shape(key)[1], dtype=tf.float32))
 
-            x_ = tf.nn.softmax(numerator / denominator)
-
             if mask_future:
-                x_ = tf.linalg.band_part(x_, num_lower=-1, num_upper=0, name='future-mask')
+                upper = (1 + 1e9) * tf.linalg.band_part(tf.ones_like(numerator), num_lower=0, num_upper=-1)
+                mask = 1 - upper
+                numerator *= mask
+
+            x_ = tf.nn.softmax(numerator / denominator)
             return tf.einsum('ijk,ikl->ijl', x_, value)
 
     def __multi_head_attention(self, queries, keys, values, mask_future=False):
