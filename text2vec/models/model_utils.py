@@ -32,13 +32,6 @@ def build_cell(num_layers, num_hidden, keep_prob, use_cuda=False):
     return cells[0]
 
 
-def length(sequence):
-    used = tf.sign(tf.reduce_max(tf.abs(sequence), 2))
-    _length = tf.reduce_sum(used, 1)
-    _length = tf.cast(_length, tf.int32)
-    return _length
-
-
 def sum_reduce(seq_fw, seq_bw):
     """
     Combines forward and backward components of bi-directional RNNs by summing them element-wise

@@ -1,8 +1,8 @@
 from text2vec.preprocessing import EmbeddingLookup
-from text2vec.models import TextAttention, Tensor2Tensor
+from text2vec import models
 import tensorflow as tf
-from tensorflow.python.client.device_lib import list_local_devices
 import numpy as np
+from . import utils
 
 import pickle
 
@@ -13,19 +13,12 @@ import os
 root = os.path.dirname(os.path.abspath(__file__))
 
 
-def log(message):
-    print(f"[INFO] {message}")
-
-
-def validate_hardware():
-    has_gpu = any([True if x.device_type == 'GPU' else False for x in list_local_devices()])
-
-    if not has_gpu:
-        log("Use of the GPU was requested but not found. Placing graph on the CPU.")
-    return has_gpu
-
-
 def load_text():
+    """
+    Loads the training data from a text file
+    :return: (list)
+    """
+
     path = root + "/../text2vec/data/"
     files = [f for f in os.listdir(path) if os.path.isfile(os.path.join(path, f))]
     texts = []
@@ -37,99 +30,83 @@ def load_text():
     return texts
 
 
-def load_glove_vectors(lookup, glove_path):
-    weights, ordering, vocab = [], [], set()
-    count = 0
-    with open(glove_path, 'r') as f:
-        for line in f:
-            split = line.split()
-            size = len(split)
-            values = split[-300:]
-            token = ' '.join(split[:size - 300])
-
-            if token in lookup:
-                vocab.add(token)
-                model_order = lookup[token]
-                weights.append(list(map(float, values)))
-                ordering.append((count, model_order))
-                count += 1
-
-            if count > len(lookup):
-                break
-
-    ordering, _ = zip(*sorted(ordering, key=lambda idx: idx[1]))
-    weights = np.array(weights, dtype=np.float32)
-    weights = weights[np.array(ordering)]
-    unknown = weights.mean(axis=0)[:, None].T
-    pad_vector = np.random.random((1, weights.shape[1]))
-    weights = np.vstack([pad_vector, weights, unknown])
-    return weights, vocab
-
-
 def test_val_split(corpus, val_size):
+    """
+    Splits the entire corpus into training and validation sets
+    :param corpus: all training documents (list)
+    :param val_size: number of examples in the validation set (int)
+    :return: training set, validation set (list, list)
+    """
+
     s = np.random.permutation(range(len(corpus)))
     cv_set = [corpus[item] for item in s[:val_size]]
     corpus = [corpus[item] for item in s[val_size:]]
     return corpus, cv_set
 
 
-def pad_sequence(sequence, max_sequence_length):
-    """
-    Pads individual text sequences to the maximum length
-    seen by the model at training time
-    :param sequence: list of integer lookup keys for the vocabulary (list)
-    :param max_sequence_length: (int)
-    :return: padded sequence (ndarray)
-    """
-
-    sequence = np.array(sequence, dtype=np.int32)
-    difference = max_sequence_length - sequence.shape[0]
-    pad = np.zeros((difference,), dtype=np.int32)
-    return np.concatenate((sequence, pad))
-
-
 def mini_batches(corpus, size, n_batches, max_len, seed):
+    """
+    Mini-batch generator for feeding training examples into the model
+    :param corpus: training set of sequence-encoded data (list)
+    :param size: size of each mini-batch (int)
+    :param n_batches: number of mini-batches in each epoch (int)
+    :param max_len: maximum sequence (time-steps) length (int)
+    :param seed: numpy randomization seed (int)
+    :return: mini-batch, dimensions are [batch_size, max_len] (np.ndarray)
+    """
+
     np.random.seed(seed)
     s = np.random.choice(range(len(corpus)), replace=False, size=min(len(corpus), size * n_batches)).astype(np.int32)
 
     for mb in range(n_batches):
-        yield np.array([pad_sequence(corpus[index], max_len) for index in s[mb * size: (mb + 1) * size]])
-
-
-def compute_angles(vectors):
-    vectors /= np.linalg.norm(vectors, axis=1, keepdims=True)
-    cosine = np.dot(vectors, vectors.T)
-    cosine = np.clip(cosine, -1, 1)
-    degrees = np.arccos(cosine) * (180 / np.pi)
-    return degrees
+        yield np.array([utils.pad_sequence(corpus[index], max_len) for index in s[mb * size: (mb + 1) * size]])
 
 
 def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, attention_size=128, layers=8,
-          batch_size=32, num_batches=50, num_epochs=10, glove_embeddings_file=None, use_tf_idf=False):
+          batch_size=32, num_batches=50, num_epochs=10, glove_embeddings_file=None,
+          use_tf_idf=False, use_attention=False):
+    """
+    Core training algorithm
+    :param model_folder: name of the folder to create for the trained model (str)
+    :param num_tokens: number of vocab tokens to keep from the training corpus,
+                       is mutable if the GloVe option is chosen (int, optional)
+    :param embedding_size: size of the word-embedding dimensions,
+                           is overridden if the GloVe option is chosen (int, optional)
+    :param num_hidden: number of hidden LSTM dimensions (int, optional)
+    :param attention_size: number of hidden attention-mechanism dimensions (int, optional)
+    :param layers: number of multi-head attention mechanisms for transformer model (int, optional)
+    :param batch_size: size of each mini-batch (int, optional)
+    :param num_batches: number of mini-batches in each epoch (int, optional)
+    :param num_epochs: number of training epochs (int, optional)
+    :param glove_embeddings_file: file location of the pre-trained GloVe embeddings,
+                                  if set will override some settings above (str, optional)
+    :param use_tf_idf: set to True to choose embedding tokens based on TF-IDF values rather than frequency alone (bool)
+    :param use_attention: set to True to use the self-attention only model (bool)
+    """
 
     log_dir = root + "/../../text2vec/" + model_folder
     if not os.path.exists(log_dir):
         os.mkdir(log_dir)
 
-    log("Fetching corpus and transforming to frequency domain")
+    utils.log("Fetching corpus and transforming to frequency domain")
     corpus = load_text()
 
-    log("Splitting the training and validation sets")
+    utils.log("Splitting the training and validation sets")
     train_corpus, cv_corpus = test_val_split(corpus=corpus, val_size=512)
 
-    log("Fitting embedding lookup and transforming the training and cross-validation sets")
+    utils.log("Fitting embedding lookup and transforming the training and cross-validation sets")
     lookup = EmbeddingLookup(top_n=num_tokens, use_tf_idf_importance=use_tf_idf)
     full_text = lookup.fit_transform(corpus=train_corpus)
     cv_x = lookup.transform(corpus=cv_corpus)
 
-    weights=None
+    weights = None
     if glove_embeddings_file is not None:
-        log("Using GloVe embeddings from Common Crawl")
-        weights, glove_vocab = load_glove_vectors(lookup, glove_path=glove_embeddings_file)
+        utils.log("Using GloVe embeddings from Common Crawl")
+        weights, glove_vocab = utils.load_glove_vectors(lookup, glove_path=glove_embeddings_file)
         full_text = lookup.fit_transform(corpus=train_corpus, vocab_set=glove_vocab)
         cv_x = lookup.transform(corpus=cv_corpus)
 
-    log("Getting the maximum sequence length and vocab size")
+    utils.log("Getting the maximum sequence length and vocab size")
     max_seq_len = max([len(seq) for seq in full_text + cv_x])
     vocab_size = max([max(seq) for seq in full_text + cv_x]) + 1
 
@@ -143,12 +120,12 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
         for k in reverse:
             lf.write(reverse[k] + '\n')
 
-    log(f"Padding sequences in corpus to length {max_seq_len}")
-    full_text = np.array([pad_sequence(seq, max_seq_len) for seq in full_text])
+    utils.log(f"Padding sequences in corpus to length {max_seq_len}")
+    full_text = np.array([utils.pad_sequence(seq, max_seq_len) for seq in full_text])
     # cv_x = np.array([pad_sequence(seq, max_seq_len) for seq in cv_x])
     keep_probabilities = [0.9, 0.9, 1.0]
 
-    log("Building computation graph")
+    utils.log("Building computation graph")
     seq_input = tf.placeholder(dtype=tf.int32, shape=[None, max_seq_len])
     keep_prob = tf.placeholder_with_default([1.0, 1.0, 1.0], shape=(3,))
 
@@ -168,26 +145,26 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
     json.dump(meta_data, file_sys, indent=2)
     file_sys.close()
 
-    # model = TextAttention(
-    #     input_x=seq_input,
-    #     embedding_size=100,
-    #     vocab_size=vocab_size,
-    #     keep_prob=keep_prob,
-    #     num_hidden=num_hidden,
-    #     attention_size=attention_size,
-    #     is_training=True,
-    #     use_cuda=use_cuda
-    # )
-
-    model = Tensor2Tensor(
-        input_x=seq_input,
-        embedding_size=embedding_size,
-        vocab_size=vocab_size,
-        word_weights=weights,
-        keep_prob=keep_prob,
-        layers=layers,
-        is_training=True
-    )
+    if use_attention:
+        model = models.Tensor2Tensor(
+            input_x=seq_input,
+            embedding_size=embedding_size,
+            vocab_size=vocab_size,
+            word_weights=weights,
+            keep_prob=keep_prob,
+            layers=layers,
+            is_training=True
+        )
+    else:
+        model = models.TextAttention(
+            input_x=seq_input,
+            embedding_size=embedding_size,
+            vocab_size=vocab_size,
+            keep_prob=keep_prob,
+            num_hidden=num_hidden,
+            attention_size=attention_size,
+            is_training=True
+        )
 
     lstm_file_name = None
     if not os.path.exists(log_dir):
@@ -206,7 +183,7 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
         "The movie was great!",
         "The movie was terrible."
     ]
-    text_x = np.array([pad_sequence(seq, max_seq_len) for seq in lookup.transform(test_sentences)])
+    text_x = np.array([utils.pad_sequence(seq, max_seq_len) for seq in lookup.transform(test_sentences)])
 
     with tf.Session(config=sess_config) as sess:
         saver = tf.train.Saver()
@@ -262,7 +239,7 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
             summary_writer_train.flush()
 
             vectors = sess.run(model.embedding, feed_dict={seq_input: text_x})
-            angle = compute_angles(vectors)[0, 1]
+            angle = utils.compute_angles(vectors)[0, 1]
             print(f"The 'angle' between `{'` and `'.join(test_sentences)}` is {angle} degrees")
 
             test_case_summary = tf.Summary()
@@ -294,6 +271,7 @@ def main():
     parser.add_argument("--num_mb", type=int, help="Number of mini-batches per epoch.", default=40)
     parser.add_argument("--epochs", type=int, help="Number of epochs to run.", default=100000)
     parser.add_argument("--idf", action='store_true', help="Flag set to use TF-IDF values for N-token selection.")
+    parser.add_argument("--attention", action='store_true', help="Set to use attention transformer model.")
     parser.add_argument("--use_glove", action='store_true', help="Set to use the GloVe Common Crawl embeddings.")
     parser.add_argument("--glove_file", type=str, help="GloVe embeddings file.", default=None)
 
@@ -315,7 +293,8 @@ def main():
             num_batches=args.num_mb,
             num_epochs=args.epochs,
             glove_embeddings_file=args.glove_file,
-            use_tf_idf=bool(args.idf)
+            use_tf_idf=bool(args.idf),
+            use_attention=bool(args.attention)
         )
     elif args.run == "infer":
         os.environ["MODEL_PATH"] = args.model_name

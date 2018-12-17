@@ -4,6 +4,10 @@ import re
 import math
 
 
+class EmbeddingsNotFitError(Exception):
+    pass
+
+
 class EmbeddingLookup(object):
 
     def __init__(self, top_n=None, use_tf_idf_importance=False):
@@ -14,6 +18,8 @@ class EmbeddingLookup(object):
         self._dictionary = None
         self._reverse = None
         self._unknown = "<unk>"
+
+        self.__error_message = "You must fit the lookup first, either by calling the fit or fit_transform methods."
 
     def _get_top_n_tokens_tf_idf(self, corpus):
         # create set of tokens for each document
@@ -47,9 +53,9 @@ class EmbeddingLookup(object):
 
     def fit(self, corpus, vocab_set=None):
         if vocab_set:
-            tokens = [word for text in corpus for word in self._tokenizer(text.strip()) if word in vocab_set]
+            tokens = [word for text in corpus for word in self._tokenizer(text.lower().strip()) if word in vocab_set]
         else:
-            tokens = [word for text in corpus for word in self._tokenizer(text.strip())]
+            tokens = [word for text in corpus for word in self._tokenizer(text.lower().strip())]
         self._dictionary = Counter(tokens)
 
         if self._top_n is not None and self._top_n < len(self._dictionary):
@@ -69,12 +75,12 @@ class EmbeddingLookup(object):
 
     def transform(self, corpus):
         if self._dictionary is None:
-            raise AttributeError("You must fit the lookup first, either by calling the fit or fit_transform methods.")
+            raise EmbeddingsNotFitError(self.__error_message)
 
         corpus = [
             [
                 self._dictionary[word] if word in self._dictionary else self._dictionary[self._unknown]
-                for word in self._tokenizer(text.strip())
+                for word in self._tokenizer(text.lower().strip())
             ] for text in corpus]
         return corpus
 
@@ -82,21 +88,9 @@ class EmbeddingLookup(object):
         self.fit(corpus, vocab_set=vocab_set)
         return self.transform(corpus)
 
-    def refit(self, corpus, dictionary_subset):
-        if self._dictionary is None:
-            raise AttributeError("You must fit the lookup first, either by calling the fit or fit_transform methods.")
-        subset = set(self._dictionary.keys()).intersection(dictionary_subset)
-
-        corpus = [
-            [
-                self._dictionary[word] if word in subset else self._dictionary[self._unknown]
-                for word in self._tokenizer(text.strip())
-            ] for text in corpus]
-        return corpus
-
     def __getitem__(self, key):
         if not isinstance(self._dictionary, dict):
-            raise TypeError("You must fit the lookup first, either by calling the fit or fit_transform methods.")
+            raise EmbeddingsNotFitError(self.__error_message)
         return self._dictionary.get(key, None)
 
     def __contains__(self, item):

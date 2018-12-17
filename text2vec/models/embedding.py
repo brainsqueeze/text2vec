@@ -30,7 +30,7 @@ class TextAttention(object):
             self._seq_lengths = tf.count_nonzero(input_x, axis=1, name="sequence_lengths")
             embeddings = tf.Variable(
                 tf.random_uniform([vocab_size, self._dims], -1.0, 1.0),
-                name="word_embeddings",
+                name="embeddings",
                 dtype=tf.float32,
                 trainable=True
             )
@@ -181,7 +181,6 @@ class TextAttention(object):
 
     def _dense(self, input_x):
         with tf.variable_scope('dense'):
-            input_dim = input_x.get_shape().as_list()[-1]
             input_x = tf.nn.dropout(input_x, keep_prob=self._dense_keep_prob, name="dense_dropout")
 
             with tf.variable_scope('projection'):
@@ -196,21 +195,7 @@ class TextAttention(object):
                 alpha = tf.divide(inner_product, context_norm_sqrd)
                 projection = tf.einsum("ij,ik->ijk", alpha, self.context, name="projection_op")
 
-            weight_ = tf.get_variable(
-                "dense_weight",
-                shape=[input_dim, self._dims],
-                dtype=tf.float32,
-                initializer=tf.truncated_normal_initializer(-0.01, 0.01)
-            )
-
-            bias_ = tf.get_variable(
-                "dec_bias",
-                shape=[self._dims],
-                dtype=tf.float32,
-                initializer=tf.zeros_initializer()
-            )
-
-            output_ = tf.einsum('ijk,kl->ijl', projection, weight_) + bias_
+            output_ = tf.layers.dense(inputs=projection, units=self._dims)
             return output_
 
     def generalized_cosine(self, in_seq, out_seq):

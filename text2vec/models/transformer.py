@@ -40,7 +40,7 @@ class Tensor2Tensor(object):
         with tf.variable_scope('encoder'):
             x_encoded = self.__multi_head_attention(queries=x, keys=x, values=x) + x
             x_encoded = self.layer_norm_compute(x_encoded)
-            x_encoded = self.__point_wise_feed_forward(x_encoded) + x_encoded
+            x_encoded = self.__position_wise_feed_forward(x_encoded) + x_encoded
             x_encoded = self.layer_norm_compute(x_encoded)
 
         # Output pipeline
@@ -64,12 +64,13 @@ class Tensor2Tensor(object):
 
             x_decoded = self.__multi_head_attention(values=x_encoded, keys=x_encoded, queries=x_decoded) + x_decoded
             x_decoded = self.layer_norm_compute(x_decoded)
-            x_decoded = self.__point_wise_feed_forward(x_decoded) + x_decoded
+            x_decoded = self.__position_wise_feed_forward(x_decoded) + x_decoded
             x_decoded = self.layer_norm_compute(x_decoded)
 
         if is_training:
             x_out = tf.layers.dense(inputs=x_decoded, units=vocab_size, name="dense")
-            self.loss = self.__cost(target_sequences=input_x, sequence_logits=x_out)
+            # self.loss = self.__cost(target_sequences=input_x, sequence_logits=x_out)
+            self.loss = self.__cost(target_sequences=decode_x, sequence_logits=x_out)
 
             with tf.variable_scope('optimizer'):
                 self._lr = tf.Variable(0.0, trainable=False)
@@ -150,84 +151,51 @@ class Tensor2Tensor(object):
 
     def __multi_head_attention(self, queries, keys, values, mask_future=False):
         with tf.variable_scope('multi-head-attention-{iteration}'.format(iteration=self.__count)):
-            key_dim = self._dims // self._layers
+            dims = self._dims
+            key_dim = dims // self._layers
             heads = []
+
+            kernel_init = tf.truncated_normal_initializer(-0.01, 0.01)
+
             queries = tf.nn.dropout(queries, self._hidden_keep_prob)
             keys = tf.nn.dropout(keys, self._hidden_keep_prob)
             values = tf.nn.dropout(values, self._hidden_keep_prob)
 
-            w = tf.get_variable(
-                "total-head-weight",
-                shape=[self._layers * key_dim, self._dims],
-                dtype=tf.float32,
-                initializer=tf.truncated_normal_initializer(-0.01, 0.01)
-            )
-
             for i in range(self._layers):
                 with tf.variable_scope("head-{layer}".format(layer=i)):
-                    w_q = tf.get_variable(
-                        "query-weight",
-                        shape=[self._dims, key_dim],
-                        dtype=tf.float32,
-                        initializer=tf.truncated_normal_initializer(-0.01, 0.01)
-                    )
+                    w_q = tf.get_variable("w-query", shape=[dims, key_dim], dtype=tf.float32, initializer=kernel_init)
+                    w_k = tf.get_variable("w-key", shape=[dims, key_dim], dtype=tf.float32, initializer=kernel_init)
+                    w_v = tf.get_variable("w-value", shape=[dims, key_dim], dtype=tf.float32, initializer=kernel_init)
 
-                    w_k = tf.get_variable(
-                        "key-weight",
-                        shape=[self._dims, key_dim],
-                        dtype=tf.float32,
-                        initializer=tf.truncated_normal_initializer(-0.01, 0.01)
-                    )
-
-                    w_v = tf.get_variable(
-                        "value-weight",
-                        shape=[self._dims, key_dim],
-                        dtype=tf.float32,
-                        initializer=tf.truncated_normal_initializer(-0.01, 0.01)
-                    )
+                    head_queries = tf.einsum('ijk,kl->ijl', queries, w_q)
+                    head_keys = tf.einsum('ijk,kl->ijl', keys, w_k)
+                    head_values = tf.einsum('ijk,kl->ijl', values, w_v)
 
                     head = self.scalar_dot_product_attention(
-                        query=tf.einsum('ijk,kl->ijl', queries, w_q),
-                        key=tf.einsum('ijk,kl->ijl', keys, w_k),
-                        value=tf.einsum('ijk,kl->ijl', values, w_v),
+                        query=head_queries,
+                        key=head_keys,
+                        value=head_values,
                         mask_future=mask_future
                     )
                     heads.append(head)
 
             total_head = tf.concat(heads, axis=-1)
             self.__count += 1
-            return tf.einsum('ijk,kl->ijl', total_head, w)
-
-    def __point_wise_feed_forward(self, x):
-        with tf.variable_scope('FFN'):
-            w_1 = tf.get_variable(
-                "inner-weight",
-                shape=[self._dims, self._dims],
-                dtype=tf.float32,
-                initializer=tf.truncated_normal_initializer(-0.01, 0.01)
-            )
-            b_1 = tf.get_variable(
-                "inner-bias",
-                shape=[self._dims],
-                dtype=tf.float32,
-                initializer=tf.zeros_initializer()
-            )
-
-            w_2 = tf.get_variable(
-                "outer-weight",
-                shape=[self._dims, self._dims],
-                dtype=tf.float32,
-                initializer=tf.truncated_normal_initializer(-0.01, 0.01)
-            )
-            b_2 = tf.get_variable(
-                "outer-bias",
-                shape=[self._dims],
-                dtype=tf.float32,
-                initializer=tf.zeros_initializer()
-            )
-            output = tf.nn.relu(tf.einsum('ijk,lk->ijk', x, w_1) + b_1)
-            output = tf.einsum('ijk,lk->ijk', output, w_2) + b_2
+            output = tf.layers.dense(inputs=total_head, units=dims, use_bias=False)
             return output
+
+    def __position_wise_feed_forward(self, x):
+        with tf.variable_scope('position-wise-FFN'):
+            dims = self._dims
+            hidden_dim_size = 4 * dims
+
+            conv_filter_1 = tf.get_variable('conv-filter-inner', shape=[1, dims, hidden_dim_size], dtype=tf.float32)
+            conv_filter_2 = tf.get_variable('conv-filter-outer', shape=[1, hidden_dim_size, dims], dtype=tf.float32)
+
+            inner_conv = tf.nn.conv1d(x, filters=conv_filter_1, stride=1, padding='SAME')
+            inner_conv = tf.nn.relu(inner_conv)
+            outer_conv = tf.nn.conv1d(inner_conv, filters=conv_filter_2, stride=1, padding='SAME')
+            return outer_conv
 
     @staticmethod
     def layer_norm_compute(x, epsilon=1e-6, scale=1.0, bias=0):
@@ -239,7 +207,8 @@ class Tensor2Tensor(object):
 
     def __bahdanau_attention(self, encoded, decoded):
         with tf.variable_scope('bahdanau-attention'):
-            weight = tf.get_variable("weight", shape=[self._time_steps], initializer=tf.truncated_normal_initializer(-0.01, 0.01))
+            kernel_init = tf.truncated_normal_initializer(-0.01, 0.01)
+            weight = tf.get_variable("weight", shape=[self._time_steps], initializer=kernel_init)
             u_omega = tf.get_variable("u_omega", shape=[self._dims], initializer=tf.zeros_initializer())
 
             processed_query = tf.expand_dims(tf.einsum('m,imj->ij', weight, decoded), axis=1)
