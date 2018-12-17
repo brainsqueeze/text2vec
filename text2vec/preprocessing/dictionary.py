@@ -64,7 +64,10 @@ class EmbeddingLookup(object):
             else:
                 self._dictionary = self._get_top_n_tokens()
         else:
-            self._dictionary = {item[0]: idx + 1 for idx, item in enumerate(self._dictionary.items())}
+            self._dictionary = {
+                key: idx + 1
+                for idx, (key, value) in enumerate(sorted(self._dictionary.items(), key=lambda x: x[1], reverse=True))
+            }
 
             # add the <unk> token to the embedding lookup
             size = len(self._dictionary)

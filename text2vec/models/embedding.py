@@ -20,6 +20,7 @@ class TextAttention(object):
 
         self._batch_size, self._time_steps = input_x.get_shape().as_list()
         self._dims = embedding_size
+        self._num_labels = vocab_size
         self._num_hidden = num_hidden
         self._attention_size = attention_size
 
@@ -35,21 +36,24 @@ class TextAttention(object):
                 trainable=True
             )
             self._input = tf.nn.embedding_lookup(embeddings, input_x)
-            input_x = self._input_op()
+            x = self._input_op()
 
         # bi-directional encoder
-        self.context, final_state, shape = self._encoder(input_x)
+        self.context, final_state, shape = self._encoder(x)
 
         if is_training:
             # bi-directional decoder, projects onto the context vectors
             decoded = self._decoder(tensor_shape=shape, initial_state=final_state)
 
             # dense layer
-            self._output = self._dense(decoded)
+            self._output = self._dense(decoded, category_output=True)
             self._input = tf.stack(self._input)
 
             with tf.variable_scope('cost'):
-                self.loss = self._cost()
+                # self.loss = self._cost()
+
+                target = tf.concat([tf.zeros_like(input_x[:, :1]), input_x[:, :-1]], axis=1)
+                self.loss = self.__seq_cost(target_sequences=target, sequence_logits=self._output)
 
             with tf.variable_scope('optimizer'):
                 self._lr = tf.Variable(0.0, trainable=False)
@@ -179,7 +183,7 @@ class TextAttention(object):
             dec_outputs = mu.concat_reducer(seq_fw=dec_outputs[0], seq_bw=dec_outputs[1])
             return dec_outputs
 
-    def _dense(self, input_x):
+    def _dense(self, input_x, category_output=False):
         with tf.variable_scope('dense'):
             input_x = tf.nn.dropout(input_x, keep_prob=self._dense_keep_prob, name="dense_dropout")
 
@@ -195,7 +199,10 @@ class TextAttention(object):
                 alpha = tf.divide(inner_product, context_norm_sqrd)
                 projection = tf.einsum("ij,ik->ijk", alpha, self.context, name="projection_op")
 
-            output_ = tf.layers.dense(inputs=projection, units=self._dims)
+            if category_output:
+                output_ = tf.layers.dense(inputs=projection, units=self._num_labels)
+            else:
+                output_ = tf.layers.dense(inputs=projection, units=self._dims)
             return output_
 
     def generalized_cosine(self, in_seq, out_seq):
@@ -238,6 +245,31 @@ class TextAttention(object):
             l2_losses = [tf.nn.l2_loss(v) for v in weights if 'dense_weight' in v.name]
             loss += 1e-2 * tf.add_n(l2_losses)
         return loss
+
+    def __seq_cost(self, target_sequences, sequence_logits, smoothing=False):
+        with tf.variable_scope('cost'):
+            epsilon = tf.constant(1e-8, dtype=tf.float32, shape=[1])
+            length = tf.cast(self._seq_lengths, dtype=tf.float32)
+            length = tf.add(length, epsilon)
+
+            if smoothing:
+                smoothing = 0.1
+                targets = tf.one_hot(target_sequences, depth=self._num_labels, on_value=1.0, off_value=0.0, axis=-1)
+                loss = tf.losses.softmax_cross_entropy(
+                    logits=sequence_logits,
+                    onehot_labels=targets,
+                    label_smoothing=smoothing,
+                    reduction=tf.losses.Reduction.NONE
+                )
+            else:
+                loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
+                    logits=sequence_logits,
+                    labels=target_sequences
+                )
+
+            loss = tf.reduce_sum(loss, axis=-1) / length
+            loss = tf.reduce_mean(loss)
+            return loss
 
     @property
     def lr(self):

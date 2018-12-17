@@ -102,9 +102,14 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
     weights = None
     if glove_embeddings_file is not None:
         utils.log("Using GloVe embeddings from Common Crawl")
-        weights, glove_vocab = utils.load_glove_vectors(lookup, glove_path=glove_embeddings_file)
-        full_text = lookup.fit_transform(corpus=train_corpus, vocab_set=glove_vocab)
+        (weights, unk, pad), glove_vocab = utils.load_glove_vectors(lookup, glove_path=glove_embeddings_file)
+        full_text = lookup.fit_transform(corpus=train_corpus, vocab_set=set(glove_vocab))
+        _, ordering = zip(*sorted([(word, lookup[word]) for word in glove_vocab], key=lambda z: z[1]))
+        ordering = np.array(ordering, np.int32)
+        weights = np.vstack([weights, unk])[ordering - 1]  # re-order the weights to match this particular vocabulary
+        weights = np.vstack([pad, weights])
         cv_x = lookup.transform(corpus=cv_corpus)
+        del(unk, pad, ordering, glove_vocab)
 
     utils.log("Getting the maximum sequence length and vocab size")
     max_seq_len = max([len(seq) for seq in full_text + cv_x])
@@ -197,7 +202,10 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
         # add metadata to embeddings for visualization purposes
         config_ = tf.contrib.tensorboard.plugins.projector.ProjectorConfig()
         embedding_conf = config_.embeddings.add()
-        embeddings = sess.graph.get_tensor_by_name("embeddings:0")
+        if use_attention:
+            embeddings = sess.graph.get_tensor_by_name("embeddings:0")
+        else:
+            embeddings = sess.graph.get_tensor_by_name("embedding/embeddings:0")
         embedding_conf.tensor_name = embeddings.name
         embedding_conf.metadata_path = log_dir + "/metadata.tsv"
         tf.contrib.tensorboard.plugins.projector.visualize_embeddings(summary_writer_train, config_)

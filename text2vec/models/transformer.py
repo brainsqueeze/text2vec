@@ -60,12 +60,14 @@ class Tensor2Tensor(object):
             x_decoded = self.layer_norm_compute(x_decoded)
 
             self.__context = self.__bahdanau_attention(encoded=x_encoded, decoded=x_decoded)
-            x_decoded = self.__projection(x_decoded)
+            # x_decoded = self.__projection(x_decoded)
+            x_decoded *= tf.expand_dims(self.__context, 1)
 
-            x_decoded = self.__multi_head_attention(values=x_encoded, keys=x_encoded, queries=x_decoded) + x_decoded
-            x_decoded = self.layer_norm_compute(x_decoded)
-            x_decoded = self.__position_wise_feed_forward(x_decoded) + x_decoded
-            x_decoded = self.layer_norm_compute(x_decoded)
+            # todo: bring this back if the experiment doesn't work
+            # x_decoded = self.__multi_head_attention(values=x_encoded, keys=x_encoded, queries=x_decoded) + x_decoded
+            # x_decoded = self.layer_norm_compute(x_decoded)
+            # x_decoded = self.__position_wise_feed_forward(x_decoded) + x_decoded
+            # x_decoded = self.layer_norm_compute(x_decoded)
 
         if is_training:
             x_out = tf.layers.dense(inputs=x_decoded, units=vocab_size, name="dense")
@@ -133,6 +135,11 @@ class Tensor2Tensor(object):
             encoder = tf.Variable(tf.zeros_like(x[0]), dtype=tf.float32, trainable=False)
             encoder[:, ::2].assign(even)
             encoder[:, 1::2].assign(odd)
+
+            mask = tf.sequence_mask(lengths=self._seq_lengths, maxlen=self._time_steps, name='encoding-mask')
+            mask = tf.cast(mask, dtype=tf.float32)
+            encoder.assign(encoder * tf.tile(tf.expand_dims(mask, axis=-1), multiples=[1, 1, self._dims]))
+
             return encoder
 
     @staticmethod
