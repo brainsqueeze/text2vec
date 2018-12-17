@@ -7,7 +7,7 @@ import math
 class EmbeddingLookup(object):
 
     def __init__(self, top_n=None, use_tf_idf_importance=False):
-        self._tokenizer = re.compile("\w+|\$[\d\.]+").findall
+        self._tokenizer = re.compile(r"\w+|\$[\d\.]+").findall
         self._top_n = top_n
         self._use_tf_idf = use_tf_idf_importance
 
@@ -45,8 +45,11 @@ class EmbeddingLookup(object):
         top[self._unknown] = len(top) + 1
         return top
 
-    def fit(self, corpus):
-        tokens = [word for text in corpus for word in self._tokenizer(text.strip())]
+    def fit(self, corpus, vocab_set=None):
+        if vocab_set:
+            tokens = [word for text in corpus for word in self._tokenizer(text.strip()) if word in vocab_set]
+        else:
+            tokens = [word for text in corpus for word in self._tokenizer(text.strip())]
         self._dictionary = Counter(tokens)
 
         if self._top_n is not None and self._top_n < len(self._dictionary):
@@ -75,14 +78,32 @@ class EmbeddingLookup(object):
             ] for text in corpus]
         return corpus
 
-    def fit_transform(self, corpus):
-        self.fit(corpus)
+    def fit_transform(self, corpus, vocab_set=None):
+        self.fit(corpus, vocab_set=vocab_set)
         return self.transform(corpus)
+
+    def refit(self, corpus, dictionary_subset):
+        if self._dictionary is None:
+            raise AttributeError("You must fit the lookup first, either by calling the fit or fit_transform methods.")
+        subset = set(self._dictionary.keys()).intersection(dictionary_subset)
+
+        corpus = [
+            [
+                self._dictionary[word] if word in subset else self._dictionary[self._unknown]
+                for word in self._tokenizer(text.strip())
+            ] for text in corpus]
+        return corpus
 
     def __getitem__(self, key):
         if not isinstance(self._dictionary, dict):
             raise TypeError("You must fit the lookup first, either by calling the fit or fit_transform methods.")
         return self._dictionary.get(key, None)
+
+    def __contains__(self, item):
+        return item in self._dictionary
+
+    def __len__(self):
+        return len(self._dictionary)
 
     @property
     def reverse(self):

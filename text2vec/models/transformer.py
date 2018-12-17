@@ -7,7 +7,7 @@ class Tensor2Tensor(object):
     model described in https://arxiv.org/pdf/1706.03762.pdf
     """
 
-    def __init__(self, input_x, vocab_size, embedding_size, keep_prob, layers=8, is_training=False):
+    def __init__(self, input_x, vocab_size, embedding_size, keep_prob, layers=8, word_weights=None, is_training=False):
         self.__use_gpu = tf.test.is_gpu_available()
 
         self._batch_size, self._time_steps = input_x.get_shape().as_list()
@@ -18,19 +18,23 @@ class Tensor2Tensor(object):
 
         self.__count = 1  # keep track of re-used components for naming purposes
 
-        embeddings = tf.Variable(
-            tf.random_uniform([vocab_size, self._dims], -1.0, 1.0),
-            name='word-embeddings',
-            dtype=tf.float32,
-            trainable=True
-        )
+        if is_training and word_weights is not None:
+            embeddings = tf.Variable(word_weights, name='embeddings', dtype=tf.float32, trainable=False)
+            self._dims = word_weights.shape[1]
+        else:
+            embeddings = tf.Variable(
+                tf.random_uniform([vocab_size, self._dims], -1.0, 1.0),
+                name='embeddings',
+                dtype=tf.float32,
+                trainable=True
+            )
 
         # Input pipeline
         with tf.variable_scope('input'):
             self._seq_lengths = tf.count_nonzero(input_x, axis=1, name='sequence-lengths')
-            x = tf.nn.embedding_lookup(embeddings, input_x)
-            encoding = self.__positional_encoding(x)
-            x = x + encoding
+            inputs = tf.nn.embedding_lookup(embeddings, input_x)
+            encoding = self.__positional_encoding(inputs)
+            x = inputs + encoding
             x = tf.nn.dropout(x, keep_prob=self._input_keep_prob)
 
         with tf.variable_scope('encoder'):
@@ -54,22 +58,18 @@ class Tensor2Tensor(object):
         with tf.variable_scope('decoder'):
             x_decoded = self.__multi_head_attention(values=x, keys=x, queries=x, mask_future=True) + x
             x_decoded = self.layer_norm_compute(x_decoded)
+
+            self.__context = self.__bahdanau_attention(encoded=x_encoded, decoded=x_decoded)
+            x_decoded = self.__projection(x_decoded)
+
             x_decoded = self.__multi_head_attention(values=x_encoded, keys=x_encoded, queries=x_decoded) + x_decoded
-            self.__context = tf.layers.flatten(x_decoded)
             x_decoded = self.layer_norm_compute(x_decoded)
             x_decoded = self.__point_wise_feed_forward(x_decoded) + x_decoded
             x_decoded = self.layer_norm_compute(x_decoded)
 
-        # self.__context = self.__local_attention(encoded=x_encoded, decoded=x_decoded)
-
         if is_training:
-            with tf.variable_scope('sequence-reconstructor'):
-                # x_out = self.__projection(x_decoded)
-                # x_out = tf.layers.dense(inputs=x_out, units=vocab_size, name="output-dense")
-                x_out = tf.layers.dense(inputs=x_decoded, units=vocab_size, name="output-dense")
-
-            with tf.variable_scope('cost'):
-                self.loss = self.__cost(target_sequences=input_x, sequence_logits=x_out)
+            x_out = tf.layers.dense(inputs=x_decoded, units=vocab_size, name="dense")
+            self.loss = self.__cost(target_sequences=input_x, sequence_logits=x_out)
 
             with tf.variable_scope('optimizer'):
                 self._lr = tf.Variable(0.0, trainable=False)
@@ -237,22 +237,17 @@ class Tensor2Tensor(object):
             norm_x = (x - mean) * tf.rsqrt(variance + epsilon)
             return norm_x * scale + bias
 
-    def __local_attention(self, encoded, decoded):
-        with tf.variable_scope('local-attention'):
-            weight = tf.get_variable(
-                "weight",
-                shape=[self._time_steps, self._time_steps],
-                dtype=tf.float32,
-                initializer=tf.contrib.layers.xavier_initializer(uniform=True)
-            )
-            b_omega = tf.get_variable("b_omega", shape=[self._dims], initializer=tf.zeros_initializer())
+    def __bahdanau_attention(self, encoded, decoded):
+        with tf.variable_scope('bahdanau-attention'):
+            weight = tf.get_variable("weight", shape=[self._time_steps], initializer=tf.truncated_normal_initializer(-0.01, 0.01))
             u_omega = tf.get_variable("u_omega", shape=[self._dims], initializer=tf.zeros_initializer())
 
-            v = tf.tanh(tf.einsum('imj,mn,ink->ijk', encoded, weight, decoded) + b_omega)
-            vu = tf.einsum("ijl,l->ij", v, u_omega, name="Bahdanau_score")
-            alphas = tf.nn.softmax(vu, name="attention_weights")
+            processed_query = tf.expand_dims(tf.einsum('m,imj->ij', weight, decoded), axis=1)
+            score = tf.tanh(processed_query + encoded)
+            score = tf.reduce_sum(u_omega * score, axis=-1)
+            alphas = tf.nn.softmax(score, name="attention-weights")
 
-            output = tf.reduce_sum(encoded * tf.expand_dims(alphas, axis=1), axis=1, name="context_vector")
+            output = tf.reduce_sum(encoded * tf.expand_dims(alphas, -1), 1, name="context-vector")
             return output
 
     def __projection(self, x):
@@ -269,28 +264,30 @@ class Tensor2Tensor(object):
             projection = tf.einsum("ij,ik->ijk", alpha, self.__context, name="projection_op")
             return projection
 
-    def __cost(self, target_sequences, sequence_logits):
-        epsilon = tf.constant(1e-8, dtype=tf.float32, shape=[1])
-        length = tf.cast(self._seq_lengths, dtype=tf.float32)
-        length = tf.add(length, epsilon)
+    def __cost(self, target_sequences, sequence_logits, smoothing=False):
+        with tf.variable_scope('cost'):
+            epsilon = tf.constant(1e-8, dtype=tf.float32, shape=[1])
+            length = tf.cast(self._seq_lengths, dtype=tf.float32)
+            length = tf.add(length, epsilon)
 
-        loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
-            logits=sequence_logits,
-            labels=target_sequences
-        )
+            if smoothing:
+                smoothing = 0.1
+                targets = tf.one_hot(target_sequences, depth=self._num_labels, on_value=1.0, off_value=0.0, axis=-1)
+                loss = tf.losses.softmax_cross_entropy(
+                    logits=sequence_logits,
+                    onehot_labels=targets,
+                    label_smoothing=smoothing,
+                    reduction=tf.losses.Reduction.NONE
+                )
+            else:
+                loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
+                    logits=sequence_logits,
+                    labels=target_sequences
+                )
 
-        # smoothing = 0.1
-        # targets = tf.one_hot(target_sequences, depth=self._num_labels, on_value=1.0, off_value=0.0, axis=-1)
-        # loss = tf.losses.softmax_cross_entropy(
-        #     logits=sequence_logits,
-        #     onehot_labels=targets,
-        #     label_smoothing=smoothing,
-        #     reduction=tf.losses.Reduction.NONE
-        # )
-
-        loss = tf.reduce_sum(loss, axis=-1) / length
-        loss = tf.reduce_mean(loss)
-        return loss
+            loss = tf.reduce_sum(loss, axis=-1) / length
+            loss = tf.reduce_mean(loss)
+            return loss
 
     @property
     def embedding(self):

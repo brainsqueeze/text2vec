@@ -37,6 +37,35 @@ def load_text():
     return texts
 
 
+def load_glove_vectors(lookup, glove_path):
+    weights, ordering, vocab = [], [], set()
+    count = 0
+    with open(glove_path, 'r') as f:
+        for line in f:
+            split = line.split()
+            size = len(split)
+            values = split[-300:]
+            token = ' '.join(split[:size - 300])
+
+            if token in lookup:
+                vocab.add(token)
+                model_order = lookup[token]
+                weights.append(list(map(float, values)))
+                ordering.append((count, model_order))
+                count += 1
+
+            if count > len(lookup):
+                break
+
+    ordering, _ = zip(*sorted(ordering, key=lambda idx: idx[1]))
+    weights = np.array(weights, dtype=np.float32)
+    weights = weights[np.array(ordering)]
+    unknown = weights.mean(axis=0)[:, None].T
+    pad_vector = np.random.random((1, weights.shape[1]))
+    weights = np.vstack([pad_vector, weights, unknown])
+    return weights, vocab
+
+
 def test_val_split(corpus, val_size):
     s = np.random.permutation(range(len(corpus)))
     cv_set = [corpus[item] for item in s[:val_size]]
@@ -76,7 +105,7 @@ def compute_angles(vectors):
 
 
 def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, attention_size=128, layers=8,
-          batch_size=32, num_batches=50, num_epochs=10, use_tf_idf=False):
+          batch_size=32, num_batches=50, num_epochs=10, glove_embeddings_file=None, use_tf_idf=False):
 
     log_dir = root + "/../../text2vec/" + model_folder
     if not os.path.exists(log_dir):
@@ -86,12 +115,19 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
     corpus = load_text()
 
     log("Splitting the training and validation sets")
-    full_text, cv_x = test_val_split(corpus=corpus, val_size=512)
+    train_corpus, cv_corpus = test_val_split(corpus=corpus, val_size=512)
 
     log("Fitting embedding lookup and transforming the training and cross-validation sets")
     lookup = EmbeddingLookup(top_n=num_tokens, use_tf_idf_importance=use_tf_idf)
-    full_text = lookup.fit_transform(corpus=full_text)
-    cv_x = lookup.transform(corpus=cv_x)
+    full_text = lookup.fit_transform(corpus=train_corpus)
+    cv_x = lookup.transform(corpus=cv_corpus)
+
+    weights=None
+    if glove_embeddings_file is not None:
+        log("Using GloVe embeddings from Common Crawl")
+        weights, glove_vocab = load_glove_vectors(lookup, glove_path=glove_embeddings_file)
+        full_text = lookup.fit_transform(corpus=train_corpus, vocab_set=glove_vocab)
+        cv_x = lookup.transform(corpus=cv_corpus)
 
     log("Getting the maximum sequence length and vocab size")
     max_seq_len = max([len(seq) for seq in full_text + cv_x])
@@ -109,7 +145,7 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
 
     log(f"Padding sequences in corpus to length {max_seq_len}")
     full_text = np.array([pad_sequence(seq, max_seq_len) for seq in full_text])
-    cv_x = np.array([pad_sequence(seq, max_seq_len) for seq in cv_x])
+    # cv_x = np.array([pad_sequence(seq, max_seq_len) for seq in cv_x])
     keep_probabilities = [0.9, 0.9, 1.0]
 
     log("Building computation graph")
@@ -147,6 +183,7 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
         input_x=seq_input,
         embedding_size=embedding_size,
         vocab_size=vocab_size,
+        word_weights=weights,
         keep_prob=keep_prob,
         layers=layers,
         is_training=True
@@ -183,13 +220,13 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
         # add metadata to embeddings for visualization purposes
         config_ = tf.contrib.tensorboard.plugins.projector.ProjectorConfig()
         embedding_conf = config_.embeddings.add()
-        embeddings = sess.graph.get_tensor_by_name("word-embeddings:0")
+        embeddings = sess.graph.get_tensor_by_name("embeddings:0")
         embedding_conf.tensor_name = embeddings.name
         embedding_conf.metadata_path = log_dir + "/metadata.tsv"
         tf.contrib.tensorboard.plugins.projector.visualize_embeddings(summary_writer_train, config_)
 
         # model.assign_lr(sess, 1.0)
-        model.assign_lr(sess, 0.01)
+        model.assign_lr(sess, 0.1)
         model.assign_clip_norm(sess, 100000.0)
 
         for epoch in range(num_epochs):
@@ -257,6 +294,8 @@ def main():
     parser.add_argument("--num_mb", type=int, help="Number of mini-batches per epoch.", default=40)
     parser.add_argument("--epochs", type=int, help="Number of epochs to run.", default=100000)
     parser.add_argument("--idf", action='store_true', help="Flag set to use TF-IDF values for N-token selection.")
+    parser.add_argument("--use_glove", action='store_true', help="Set to use the GloVe Common Crawl embeddings.")
+    parser.add_argument("--glove_file", type=str, help="GloVe embeddings file.", default=None)
 
     args = parser.parse_args()
 
@@ -275,6 +314,7 @@ def main():
             batch_size=args.mb_size,
             num_batches=args.num_mb,
             num_epochs=args.epochs,
+            glove_embeddings_file=args.glove_file,
             use_tf_idf=bool(args.idf)
         )
     elif args.run == "infer":
