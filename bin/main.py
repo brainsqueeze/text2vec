@@ -268,7 +268,7 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
         tf.saved_model.simple_save(
             session=sess,
             export_dir=log_dir + "/saved",
-            inputs={'seq_input': model.seq_input},
+            inputs={'sequences': model.seq_input},
             outputs={'embedding': model.embedding}
         )
     return lstm_file_name
