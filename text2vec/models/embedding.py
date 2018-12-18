@@ -16,7 +16,7 @@ class TextAttention(object):
     """
 
     def __init__(self, max_sequence_len, vocab_size, embedding_size, num_hidden, attention_size, is_training=False):
-        self.seq_input = tf.placeholder(dtype=tf.int32, shape=[None, max_sequence_len])
+        self.seq_input = tf.placeholder(dtype=tf.int32, shape=[None, max_sequence_len], name='input')
         self.keep_prob = tf.placeholder_with_default([1.0, 1.0, 1.0], shape=(3,))
 
         self.__use_gpu = tf.test.is_gpu_available()
