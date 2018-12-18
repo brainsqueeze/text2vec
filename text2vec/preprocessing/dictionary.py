@@ -20,12 +20,12 @@ class EmbeddingLookup(object):
         self._unknown = "<unk>"
         self._end_sequence = "<eos>"
         self._begin_sequence = "<bos>"
+        self.max_sequence_length = 0
 
         self.__error_message = "You must fit the lookup first, either by calling the fit or fit_transform methods."
 
     def _build_lookup(self, terms):
         top = {key: idx + 2 for idx, (key, value) in enumerate(terms)}
-        # top[self._unknown] = len(top) + 1
         top[self._unknown] = max(top.values()) + 1  # add the <unk> token to the embedding lookup
         top[self._end_sequence] = 0
         top[self._begin_sequence] = 1
@@ -58,10 +58,13 @@ class EmbeddingLookup(object):
         return self._build_lookup(terms=top)
 
     def fit(self, corpus, vocab_set=None):
+        corpus = [self._tokenizer(text.lower().strip()) for text in corpus]
+        self.max_sequence_length = max(map(len, corpus))
+
         if vocab_set:
-            tokens = [word for text in corpus for word in self._tokenizer(text.lower().strip()) if word in vocab_set]
+            tokens = [word for text in corpus for word in text if word in vocab_set]
         else:
-            tokens = [word for text in corpus for word in self._tokenizer(text.lower().strip())]
+            tokens = [word for text in corpus for word in text]
         self._dictionary = Counter(tokens)
 
         if self._top_n is not None and self._top_n < len(self._dictionary):

@@ -15,6 +15,7 @@
 **/*.data-*
 **/*.meta
 **/*.index
+**/*.pb
 **/lookup.pkl
 **/metadata.tsv
 **/model.json

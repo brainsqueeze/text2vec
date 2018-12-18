@@ -15,27 +15,30 @@ class TextAttention(object):
     vectors, and then using the context vectors onto which I project the target sequence.
     """
 
-    def __init__(self, input_x, vocab_size, embedding_size, keep_prob, num_hidden, attention_size, is_training=False):
+    def __init__(self, max_sequence_len, vocab_size, embedding_size, num_hidden, attention_size, is_training=False):
+        self.seq_input = tf.placeholder(dtype=tf.int32, shape=[None, max_sequence_len])
+        self.keep_prob = tf.placeholder_with_default([1.0, 1.0, 1.0], shape=(3,))
+
         self.__use_gpu = tf.test.is_gpu_available()
 
-        self._batch_size, self._time_steps = input_x.get_shape().as_list()
+        self._batch_size, self._time_steps = self.seq_input.get_shape().as_list()
         self._dims = embedding_size
         self._num_labels = vocab_size
         self._num_hidden = num_hidden
         self._attention_size = attention_size
 
-        self._input_keep_prob, self._lstm_keep_prob, self._dense_keep_prob = tf.unstack(keep_prob)
+        self._input_keep_prob, self._lstm_keep_prob, self._dense_keep_prob = tf.unstack(self.keep_prob)
 
         # input embedding
         with tf.variable_scope('embedding'):
-            self._seq_lengths = tf.count_nonzero(input_x, axis=1, name="sequence_lengths")
+            self._seq_lengths = tf.count_nonzero(self.seq_input, axis=1, name="sequence_lengths")
             embeddings = tf.Variable(
                 tf.random_uniform([vocab_size, self._dims], -1.0, 1.0),
                 name="embeddings",
                 dtype=tf.float32,
                 trainable=True
             )
-            self._input = tf.nn.embedding_lookup(embeddings, input_x)
+            self._input = tf.nn.embedding_lookup(embeddings, self.seq_input)
             x = self._input_op()
 
         # bi-directional encoder
@@ -52,7 +55,7 @@ class TextAttention(object):
             with tf.variable_scope('cost'):
                 # self.loss = self._cost()
 
-                target = tf.concat([tf.zeros_like(input_x[:, :1]), input_x[:, :-1]], axis=1)
+                target = tf.concat([tf.zeros_like(self.seq_input[:, :1]), self.seq_input[:, :-1]], axis=1)
                 self.loss = self.__seq_cost(target_sequences=target, sequence_logits=self._output)
 
             with tf.variable_scope('optimizer'):

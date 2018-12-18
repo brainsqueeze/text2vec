@@ -113,7 +113,6 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
         del(unk, pad, ordering, glove_vocab)
 
     utils.log("Getting the maximum sequence length and vocab size")
-    max_seq_len = max([len(seq) for seq in full_text + cv_x])
     vocab_size = max([max(seq) for seq in full_text + cv_x]) + 1
 
     with open(log_dir + "/lookup.pkl", "wb") as pf:
@@ -125,19 +124,16 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
         for k in reverse:
             lf.write(reverse[k] + '\n')
 
-    utils.log(f"Padding sequences in corpus to length {max_seq_len}")
-    full_text = np.array([utils.pad_sequence(seq, max_seq_len) for seq in full_text])
-    cv_x = np.array([utils.pad_sequence(seq, max_seq_len) for seq in cv_x])
+    utils.log(f"Padding sequences in corpus to length {lookup.max_sequence_length}")
+    full_text = np.array([utils.pad_sequence(seq, lookup.max_sequence_length) for seq in full_text])
+    cv_x = np.array([utils.pad_sequence(seq, lookup.max_sequence_length) for seq in cv_x])
     keep_probabilities = [0.9, 0.9, 1.0]
 
     utils.log("Building computation graph")
-    seq_input = tf.placeholder(dtype=tf.int32, shape=[None, max_seq_len])
-    keep_prob = tf.placeholder_with_default([1.0, 1.0, 1.0], shape=(3,))
-
     file_sys = open(log_dir + "/model.json", "w")
     meta_data = {
         "embeddingDimensions": num_hidden,
-        "maxSequenceLength": max_seq_len,
+        "maxSequenceLength": lookup.max_sequence_length,
         "vocabSize": vocab_size,
         "attentionWeightDim": attention_size,
         "trainingParameters": {
@@ -152,20 +148,18 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
 
     if use_attention:
         model = models.Tensor2Tensor(
-            input_x=seq_input,
+            max_sequence_len=lookup.max_sequence_length,
             embedding_size=embedding_size,
             vocab_size=vocab_size,
             word_weights=weights,
-            keep_prob=keep_prob,
             layers=layers,
             is_training=True
         )
     else:
         model = models.TextAttention(
-            input_x=seq_input,
+            max_sequence_len=lookup.max_sequence_length,
             embedding_size=embedding_size,
             vocab_size=vocab_size,
-            keep_prob=keep_prob,
             num_hidden=num_hidden,
             attention_size=attention_size,
             is_training=True
@@ -188,8 +182,9 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
         "The movie was great!",
         "The movie was terrible."
     ]
-    text_x = np.array([utils.pad_sequence(seq, max_seq_len) for seq in lookup.transform(test_sentences)])
+    text_x = np.array([utils.pad_sequence(seq, lookup.max_sequence_length) for seq in lookup.transform(test_sentences)])
 
+    # builder = tf.saved_model.builder.SavedModelBuilder(export_dir=log_dir + "/saved")
     with tf.Session(config=sess_config) as sess:
         saver = tf.train.Saver()
         sess.run(tf.global_variables_initializer())
@@ -219,7 +214,8 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
             train_summary = tf.Summary()
             i = 1
 
-            for x in mini_batches(full_text, size=batch_size, n_batches=num_batches, max_len=max_seq_len, seed=epoch):
+            for x in mini_batches(full_text, size=batch_size, n_batches=num_batches,
+                                  max_len=lookup.max_sequence_length, seed=epoch):
                 if x.shape[0] == 0:
                     continue
 
@@ -228,8 +224,8 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
                 loss_val, gradient, current_lr, _ = sess.run(
                     [model.loss, model.gradient_norm, model.lr, model.train],
                     feed_dict={
-                        seq_input: x,
-                        keep_prob: keep_probabilities
+                        model.seq_input: x,
+                        model.keep_prob: keep_probabilities
                     }
                 )
 
@@ -251,7 +247,7 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
                 step += 1
             summary_writer_train.flush()
 
-            vectors = sess.run(model.embedding, feed_dict={seq_input: text_x})
+            vectors = sess.run(model.embedding, feed_dict={model.seq_input: text_x})
             angle = utils.compute_angles(vectors)[0, 1]
             print(f"The 'angle' between `{'` and `'.join(test_sentences)}` is {angle} degrees")
 
@@ -262,7 +258,7 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
 
             if verbose:
                 dev_summary = tf.Summary()
-                cv_loss = sess.run(model.loss, feed_dict={seq_input: cv_x, keep_prob: keep_probabilities})
+                cv_loss = sess.run(model.loss, feed_dict={model.seq_input: cv_x, model.keep_prob: keep_probabilities})
                 dev_summary.value.add(tag="cost", simple_value=cv_loss)
                 summary_writer_dev.add_summary(dev_summary, epoch * num_batches + i)
                 summary_writer_dev.flush()
@@ -271,8 +267,8 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
 
         tf.saved_model.simple_save(
             session=sess,
-            export_dir=log_dir,
-            inputs={'seq_input': seq_input},
+            export_dir=log_dir + "/saved",
+            inputs={'seq_input': model.seq_input},
             outputs={'embedding': model.embedding}
         )
     return lstm_file_name

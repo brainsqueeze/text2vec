@@ -7,14 +7,17 @@ class Tensor2Tensor(object):
     model described in https://arxiv.org/pdf/1706.03762.pdf
     """
 
-    def __init__(self, input_x, vocab_size, embedding_size, keep_prob, layers=8, word_weights=None, is_training=False):
+    def __init__(self, max_sequence_len, vocab_size, embedding_size, layers=8, word_weights=None, is_training=False):
+        self.seq_input = tf.placeholder(dtype=tf.int32, shape=[None, max_sequence_len], name='input')
+        self.keep_prob = tf.placeholder_with_default([1.0, 1.0, 1.0], shape=(3,))
+
         self.__use_gpu = tf.test.is_gpu_available()
 
-        self._batch_size, self._time_steps = input_x.get_shape().as_list()
+        self._batch_size, self._time_steps = self.seq_input.get_shape().as_list()
         self._dims = embedding_size
         self._num_labels = vocab_size
         self._layers = layers
-        self._input_keep_prob, self._hidden_keep_prob, self._dense_keep_prob = tf.unstack(keep_prob)
+        self._input_keep_prob, self._hidden_keep_prob, self._dense_keep_prob = tf.unstack(self.keep_prob)
 
         self.__count = 1  # keep track of re-used components for naming purposes
 
@@ -31,8 +34,8 @@ class Tensor2Tensor(object):
 
         # Input pipeline
         with tf.variable_scope('input'):
-            self._seq_lengths = tf.count_nonzero(input_x, axis=1, name='sequence-lengths')
-            inputs = tf.nn.embedding_lookup(embeddings, input_x)
+            self._seq_lengths = tf.count_nonzero(self.seq_input, axis=1, name='sequence-lengths')
+            inputs = tf.nn.embedding_lookup(embeddings, self.seq_input)
             encoding = self.__positional_encoding(inputs)
             x = inputs + encoding
             x = tf.nn.dropout(x, keep_prob=self._input_keep_prob)
@@ -45,7 +48,7 @@ class Tensor2Tensor(object):
 
         # Output pipeline
         with tf.variable_scope('output'):
-            decode_x = tf.concat([tf.ones_like(input_x[:, :1]), input_x[:, :-1]], axis=1)  # shift right
+            decode_x = tf.concat([tf.ones_like(self.seq_input[:, :1]), self.seq_input[:, :-1]], axis=1)  # shift right
 
             x = tf.nn.embedding_lookup(embeddings, decode_x)
             encoding = self.__positional_encoding(x)
@@ -71,7 +74,7 @@ class Tensor2Tensor(object):
 
         if is_training:
             x_out = tf.layers.dense(inputs=x_decoded, units=vocab_size, name="dense")
-            self.loss = self.__cost(target_sequences=input_x, sequence_logits=x_out)
+            self.loss = self.__cost(target_sequences=self.seq_input, sequence_logits=x_out)
 
             with tf.variable_scope('optimizer'):
                 self._lr = tf.Variable(0.0, trainable=False)
