@@ -16,8 +16,11 @@ if __name__ == '__main__':
     parser.add_argument("model_name", type=str, help="Folder name in which to store model.")
     args = parser.parse_args()
 
-    log_dir = root + args.model_name
+    if args.model_name is None:
+        print(args.print_help())
+        exit(2)
 
+    log_dir = root + args.model_name
     gpu_options = tf.GPUOptions(
         per_process_gpu_memory_fraction=0.8,
         allow_growth=True
