@@ -59,13 +59,9 @@ class Tensor2Tensor(object):
             x_decoded = self.__multi_head_attention(values=x, keys=x, queries=x, mask_future=True) + x
             x_decoded = self.layer_norm_compute(x_decoded)
 
-            # self.__context = self.__bahdanau_attention(encoded=x_encoded, decoded=x_decoded)
             self.__context = self.__bahdanau_attention(encoded=x_encoded)
             x_decoded = self.__projection(x_decoded) + x_decoded
-            # x_decoded *= tf.expand_dims(self.__context, 1)
 
-            # todo: bring this back if the experiment doesn't work
-            # x_decoded = self.__multi_head_attention(values=x_encoded, keys=x_encoded, queries=x_decoded) + x_decoded
             x_decoded = self.layer_norm_compute(x_decoded)
             x_decoded = self.__position_wise_feed_forward(x_decoded) + x_decoded
             x_decoded = self.layer_norm_compute(x_decoded)
