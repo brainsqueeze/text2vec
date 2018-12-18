@@ -41,12 +41,17 @@ if __name__ == '__main__':
             export_dir=log_dir + "/saved"
         )
 
-        graph = tf.get_default_graph()
-        def_key = tf.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
-        seq_input = graph.get_tensor_by_name(model.signature_def[def_key].inputs['sequences'].name)
-        embedding = graph.get_tensor_by_name(model.signature_def[def_key].outputs['embedding'].name)
+        inputs = model.signature_def[tf.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY].inputs
+        outputs = model.signature_def[tf.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY].outputs
 
-        test_sentences = ["The movie was great!", "The movie was terrible."]
+        graph = tf.get_default_graph()
+        seq_input = graph.get_tensor_by_name(inputs['seq_input'].name)
+        embedding = graph.get_tensor_by_name(outputs['embedding'].name)
+
+        test_sentences = [
+            "The movie was great!",
+            "The movie was terrible."
+        ]
         text_x = np.array([
             utils.pad_sequence(seq, lookup.max_sequence_length)
             for seq in lookup.transform(test_sentences)

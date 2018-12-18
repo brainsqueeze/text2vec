@@ -1,4 +1,3 @@
-from text2vec.models.embedding import TextAttention
 import tensorflow as tf
 import numpy as np
 
@@ -7,77 +6,51 @@ import nltk.data
 from itertools import groupby
 
 import pickle
-import json
 import os
 
 
 class Embedder(object):
 
-    def __init__(self, use_gpu=False):
-        self._root = os.path.dirname(os.path.abspath(__file__)) + "/../../" + os.environ["MODEL_PATH"]
+    def __init__(self):
+        log_dir = os.path.dirname(os.path.abspath(__file__)) + "/../../" + os.environ["MODEL_PATH"]
 
-        num_hidden, self._max_seq_len, vocab_size, attention_size, logdir = self._get_metadata()
+        with open(log_dir + "/lookup.pkl", "rb") as pf:
+            self.lookup = pickle.load(pf)
+            self.max_seq_len = self.lookup.max_sequence_length
 
-        with open(logdir + "/lookup.pkl", "rb") as pf:
-            self._lookup = pickle.load(pf)
+        gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.8)
+        sess_config = tf.ConfigProto(
+            gpu_options=gpu_options,
+            allow_soft_placement=True,
+            log_device_placement=False
+        )
+        self.__session = tf.Session(config=sess_config)
 
-        self._seq_input = tf.placeholder(dtype=tf.int32, shape=[None, self._max_seq_len])
-        self._keep_prob = tf.placeholder_with_default([1.0, 1.0, 1.0], shape=(3,))
-
-        use_cuda = tf.test.is_gpu_available()
-
-        self._model = TextAttention(
-            input_x=self._seq_input,
-            embedding_size=100,
-            vocab_size=vocab_size,
-            keep_prob=self._keep_prob,
-            num_hidden=num_hidden,
-            attention_size=attention_size,
-            use_cuda=use_cuda,
-            is_training=False
+        model = tf.saved_model.loader.load(
+            sess=self.__session,
+            tags=[tf.saved_model.tag_constants.SERVING],
+            export_dir=log_dir + "/saved"
         )
 
-        if use_gpu:
-            gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.8)
-            sess_config = tf.ConfigProto(
-                gpu_options=gpu_options,
-                allow_soft_placement=True,
-                log_device_placement=False
-            )
-            self._session = tf.Session(config=sess_config)
-        else:
-            self._session = tf.Session()
+        inputs = model.signature_def[tf.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY].inputs
+        outputs = model.signature_def[tf.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY].outputs
 
-        self._session.run(tf.global_variables_initializer())
-        saver = tf.train.Saver()
-        checkpoint = tf.train.get_checkpoint_state(logdir)
-        saver.restore(self._session, checkpoint.model_checkpoint_path)
-
-    def _get_metadata(self):
-        log_directory = self._root
-
-        with open(log_directory + "/model.json", "r") as file_sys:
-            meta_data = json.load(file_sys)
-
-        num_hidden = meta_data["embeddingDimensions"]
-        max_seq_length = meta_data["maxSequenceLength"]
-        vocab_size = meta_data["vocabSize"]
-        attention_size = meta_data["attentionWeightDim"]
-
-        return num_hidden, max_seq_length, vocab_size, attention_size, log_directory
+        graph = tf.get_default_graph()
+        self.seq_input = graph.get_tensor_by_name(inputs['seq_input'].name)
+        self.embedding = graph.get_tensor_by_name(outputs['embedding'].name)
 
     def _pad_sequence(self, sequence):
-        sequence = np.array(sequence, dtype=np.int32)[:self._max_seq_len]
-        difference = self._max_seq_len - sequence.shape[0]
+        sequence = np.array(sequence, dtype=np.int32)[:self.max_seq_len]
+        difference = self.max_seq_len - sequence.shape[0]
         pad = np.zeros((difference,), dtype=np.int32)
         return np.concatenate((sequence, pad))
 
     def process_input(self, text_input):
-        x = self._lookup.transform(corpus=text_input)
+        x = self.lookup.transform(corpus=text_input)
         return np.array([self._pad_sequence(seq) for seq in x], dtype=np.int32)
 
     def embed(self, x):
-        return self._session.run(self._model.context, feed_dict={self._seq_input: x})
+        return self.__session.run(self.embedding, feed_dict={self.seq_input: x})
 
 
 class TextHandler(object):

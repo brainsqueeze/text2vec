@@ -15,7 +15,7 @@ from tornado.options import parse_command_line
 
 app = Flask(__name__)
 th = TextHandler()
-e = Embedder(use_gpu=True)
+e = Embedder()
 
 
 def responder(results, error, message):
