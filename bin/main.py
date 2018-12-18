@@ -64,7 +64,7 @@ def mini_batches(corpus, size, n_batches, max_len, seed):
 
 def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, attention_size=128, layers=8,
           batch_size=32, num_batches=50, num_epochs=10, glove_embeddings_file=None,
-          use_tf_idf=False, use_attention=False):
+          use_tf_idf=False, use_attention=False, verbose=False):
     """
     Core training algorithm
     :param model_folder: name of the folder to create for the trained model (str)
@@ -82,6 +82,7 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
                                   if set will override some settings above (str, optional)
     :param use_tf_idf: set to True to choose embedding tokens based on TF-IDF values rather than frequency alone (bool)
     :param use_attention: set to True to use the self-attention only model (bool)
+    :param verbose: set to True to log learned weight distributions and validation set performance (bool, optional)
     """
 
     log_dir = root + "/../../text2vec/" + model_folder
@@ -121,13 +122,12 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
     # write word lookup to a TSV file for TensorBoard visualizations
     with open(log_dir + "/metadata.tsv", "w") as lf:
         reverse = lookup.reverse
-        lf.write("<eos>\n")
         for k in reverse:
             lf.write(reverse[k] + '\n')
 
     utils.log(f"Padding sequences in corpus to length {max_seq_len}")
     full_text = np.array([utils.pad_sequence(seq, max_seq_len) for seq in full_text])
-    # cv_x = np.array([pad_sequence(seq, max_seq_len) for seq in cv_x])
+    cv_x = np.array([utils.pad_sequence(seq, max_seq_len) for seq in cv_x])
     keep_probabilities = [0.9, 0.9, 1.0]
 
     utils.log("Building computation graph")
@@ -210,10 +210,10 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
         embedding_conf.metadata_path = log_dir + "/metadata.tsv"
         tf.contrib.tensorboard.plugins.projector.visualize_embeddings(summary_writer_train, config_)
 
-        # model.assign_lr(sess, 1.0)
-        model.assign_lr(sess, 0.1)
         model.assign_clip_norm(sess, 100000.0)
 
+        step = 1
+        warm_up_steps = 4000
         for epoch in range(num_epochs):
             print("\t Epoch: {0}".format(epoch + 1))
             train_summary = tf.Summary()
@@ -223,8 +223,10 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
                 if x.shape[0] == 0:
                     continue
 
-                loss_val, gradient, _ = sess.run(
-                    [model.loss, model.gradient_norm, model.train],
+                learning_rate = embedding_size ** (-0.5) * min(step ** (-0.5), step * warm_up_steps ** (-1.5))
+                model.assign_lr(sess, learning_rate)
+                loss_val, gradient, current_lr, _ = sess.run(
+                    [model.loss, model.gradient_norm, model.lr, model.train],
                     feed_dict={
                         seq_input: x,
                         keep_prob: keep_probabilities
@@ -233,17 +235,20 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
 
                 train_summary.value.add(tag="cost", simple_value=loss_val)
                 train_summary.value.add(tag="gradient_norm", simple_value=gradient)
+                train_summary.value.add(tag="learning_rate", simple_value=current_lr)
 
                 summary_writer_train.add_summary(train_summary, epoch * num_batches + i)
 
                 if i % (num_batches // 10) == 0:
                     print("\t\t iteration {0} - loss: {1}".format(i, loss_val))
 
-                    # for var in tf.trainable_variables():
-                    #     tf.summary.histogram(var.op.name, var)
-                    # merged = sess.run(tf.summary.merge_all())
-                    # summary_writer_train.add_summary(merged, epoch * num_batches + i)
+                    if verbose:
+                        for var in tf.trainable_variables():
+                            tf.summary.histogram(var.op.name, var)
+                        merged = sess.run(tf.summary.merge_all())
+                        summary_writer_train.add_summary(merged, epoch * num_batches + i)
                 i += 1
+                step += 1
             summary_writer_train.flush()
 
             vectors = sess.run(model.embedding, feed_dict={seq_input: text_x})
@@ -255,14 +260,21 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
             summary_writer_dev.add_summary(test_case_summary, epoch * num_batches + i)
             summary_writer_dev.flush()
 
-            # dev_summary = tf.Summary()
-            # cv_loss = sess.run(model.loss, feed_dict={seq_input: cv_x, keep_prob: keep_probabilities})
-            # dev_summary.value.add(tag="cost", simple_value=cv_loss)
-            # summary_writer_dev.add_summary(dev_summary, epoch * num_batches + i)
-            # summary_writer_dev.flush()
+            if verbose:
+                dev_summary = tf.Summary()
+                cv_loss = sess.run(model.loss, feed_dict={seq_input: cv_x, keep_prob: keep_probabilities})
+                dev_summary.value.add(tag="cost", simple_value=cv_loss)
+                summary_writer_dev.add_summary(dev_summary, epoch * num_batches + i)
+                summary_writer_dev.flush()
 
             lstm_file_name = saver.save(sess, log_dir + '/embedding_model', global_step=int((epoch + 1) * i))
 
+        tf.saved_model.simple_save(
+            session=sess,
+            export_dir=log_dir,
+            inputs={'seq_input': seq_input},
+            outputs={'embedding': model.embedding}
+        )
     return lstm_file_name
 
 

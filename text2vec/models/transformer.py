@@ -45,11 +45,8 @@ class Tensor2Tensor(object):
 
         # Output pipeline
         with tf.variable_scope('output'):
-            if is_training:
-                # shift right
-                decode_x = tf.concat([tf.zeros_like(input_x[:, :1]), input_x[:, :-1]], axis=1)
-            else:
-                decode_x = tf.zeros_like(input_x, dtype=tf.float32)
+            decode_x = tf.concat([tf.ones_like(input_x[:, :1]), input_x[:, :-1]], axis=1)  # shift right
+
             x = tf.nn.embedding_lookup(embeddings, decode_x)
             encoding = self.__positional_encoding(x)
             x = x + encoding
@@ -59,20 +56,22 @@ class Tensor2Tensor(object):
             x_decoded = self.__multi_head_attention(values=x, keys=x, queries=x, mask_future=True) + x
             x_decoded = self.layer_norm_compute(x_decoded)
 
-            self.__context = self.__bahdanau_attention(encoded=x_encoded, decoded=x_decoded)
-            # x_decoded = self.__projection(x_decoded)
-            x_decoded *= tf.expand_dims(self.__context, 1)
+            # self.__context = self.__bahdanau_attention(encoded=x_encoded, decoded=x_decoded)
+            self.__context = self.__bahdanau_attention(encoded=x_encoded)
+            x_decoded = self.__projection(x_decoded) + x_decoded
+            # x_decoded *= tf.expand_dims(self.__context, 1)
 
             # todo: bring this back if the experiment doesn't work
             # x_decoded = self.__multi_head_attention(values=x_encoded, keys=x_encoded, queries=x_decoded) + x_decoded
-            # x_decoded = self.layer_norm_compute(x_decoded)
-            # x_decoded = self.__position_wise_feed_forward(x_decoded) + x_decoded
-            # x_decoded = self.layer_norm_compute(x_decoded)
+            x_decoded = self.layer_norm_compute(x_decoded)
+            x_decoded = self.__position_wise_feed_forward(x_decoded) + x_decoded
+            x_decoded = self.layer_norm_compute(x_decoded)
+
+            x_decoded = self.__projection(x_decoded) + x_decoded
 
         if is_training:
             x_out = tf.layers.dense(inputs=x_decoded, units=vocab_size, name="dense")
-            # self.loss = self.__cost(target_sequences=input_x, sequence_logits=x_out)
-            self.loss = self.__cost(target_sequences=decode_x, sequence_logits=x_out)
+            self.loss = self.__cost(target_sequences=input_x, sequence_logits=x_out)
 
             with tf.variable_scope('optimizer'):
                 self._lr = tf.Variable(0.0, trainable=False)
@@ -81,7 +80,8 @@ class Tensor2Tensor(object):
 
                 # grads, _ = tf.clip_by_global_norm(tf.gradients(self.loss, t_vars), self._clip_norm)
                 grads = tf.gradients(self.loss, t_vars)
-                opt = tf.train.AdamOptimizer(self._lr, beta1=0.9, beta2=0.98, epsilon=1e-9)
+                # opt = tf.train.AdamOptimizer(self._lr, beta1=0.9, beta2=0.98, epsilon=1e-9)
+                opt = tf.train.AdamOptimizer(self._lr)
 
                 # compute the gradient norm - only for logging purposes - remove if greatly affecting performance
                 self.gradient_norm = tf.sqrt(sum([tf.norm(t) ** 2 for t in grads]), name="gradient_norm")
@@ -138,7 +138,7 @@ class Tensor2Tensor(object):
 
             mask = tf.sequence_mask(lengths=self._seq_lengths, maxlen=self._time_steps, name='encoding-mask')
             mask = tf.cast(mask, dtype=tf.float32)
-            encoder.assign(encoder * tf.tile(tf.expand_dims(mask, axis=-1), multiples=[1, 1, self._dims]))
+            encoder = encoder * tf.tile(tf.expand_dims(mask, axis=-1), multiples=[1, 1, self._dims])
 
             return encoder
 
@@ -205,21 +205,29 @@ class Tensor2Tensor(object):
             return outer_conv
 
     @staticmethod
-    def layer_norm_compute(x, epsilon=1e-6, scale=1.0, bias=0):
+    def layer_norm_compute(x, epsilon=1e-8, scale=1.0, bias=0):
         with tf.variable_scope('layer-norm'):
-            mean = tf.reduce_mean(x, axis=[-1], keepdims=True)
-            variance = tf.reduce_mean(tf.square(x - mean), axis=[-1], keepdims=True)
+            mean = tf.reduce_mean(x, axis=-1, keepdims=True)
+            variance = tf.reduce_mean(tf.square(x - mean), axis=-1, keepdims=True)
             norm_x = (x - mean) * tf.rsqrt(variance + epsilon)
             return norm_x * scale + bias
 
-    def __bahdanau_attention(self, encoded, decoded):
+    def __bahdanau_attention(self, encoded, decoded=None):
         with tf.variable_scope('bahdanau-attention'):
             kernel_init = tf.truncated_normal_initializer(-0.01, 0.01)
-            weight = tf.get_variable("weight", shape=[self._time_steps], initializer=kernel_init)
-            u_omega = tf.get_variable("u_omega", shape=[self._dims], initializer=tf.zeros_initializer())
 
-            processed_query = tf.expand_dims(tf.einsum('m,imj->ij', weight, decoded), axis=1)
-            score = tf.tanh(processed_query + encoded)
+            if decoded is None:
+                attention_size = self._dims
+                weight = tf.get_variable("weight", shape=[self._dims, attention_size], initializer=kernel_init)
+                b_omega = tf.get_variable("b_omega", shape=[attention_size], initializer=tf.zeros_initializer())
+                u_omega = tf.get_variable("u_omega", shape=[attention_size], initializer=tf.zeros_initializer())
+                score = tf.tanh(tf.einsum("ijk,kl->ijl", encoded, weight) + b_omega)
+            else:
+                weight = tf.get_variable("weight", shape=[self._time_steps], initializer=kernel_init)
+                u_omega = tf.get_variable("u_omega", shape=[self._dims], initializer=tf.zeros_initializer())
+                processed_query = tf.expand_dims(tf.einsum('m,imj->ij', weight, decoded), axis=1)
+                score = tf.tanh(processed_query + encoded)
+
             score = tf.reduce_sum(u_omega * score, axis=-1)
             alphas = tf.nn.softmax(score, name="attention-weights")
 
@@ -268,3 +276,7 @@ class Tensor2Tensor(object):
     @property
     def embedding(self):
         return self.__context
+
+    @property
+    def lr(self):
+        return self._lr

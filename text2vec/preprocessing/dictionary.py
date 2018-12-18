@@ -18,8 +18,18 @@ class EmbeddingLookup(object):
         self._dictionary = None
         self._reverse = None
         self._unknown = "<unk>"
+        self._end_sequence = "<eos>"
+        self._begin_sequence = "<bos>"
 
         self.__error_message = "You must fit the lookup first, either by calling the fit or fit_transform methods."
+
+    def _build_lookup(self, terms):
+        top = {key: idx + 2 for idx, (key, value) in enumerate(terms)}
+        # top[self._unknown] = len(top) + 1
+        top[self._unknown] = max(top.values()) + 1  # add the <unk> token to the embedding lookup
+        top[self._end_sequence] = 0
+        top[self._begin_sequence] = 1
+        return top
 
     def _get_top_n_tokens_tf_idf(self, corpus):
         # create set of tokens for each document
@@ -41,15 +51,11 @@ class EmbeddingLookup(object):
 
         # sort by TF-IDF values, descending, then build the dictionary using these tokens
         sort_terms = sorted(tf_idf.items(), key=lambda x: x[1], reverse=True)[:self._top_n]
-        top = {item[0]: idx + 1 for idx, item in enumerate(sort_terms)}
-        top[self._unknown] = len(top) + 1
-        return top
+        return self._build_lookup(terms=sort_terms)
 
     def _get_top_n_tokens(self):
         top = self._dictionary.most_common(self._top_n)
-        top = {item[0]: idx + 1 for idx, item in enumerate(top)}
-        top[self._unknown] = len(top) + 1
-        return top
+        return self._build_lookup(terms=top)
 
     def fit(self, corpus, vocab_set=None):
         if vocab_set:
@@ -64,16 +70,10 @@ class EmbeddingLookup(object):
             else:
                 self._dictionary = self._get_top_n_tokens()
         else:
-            self._dictionary = {
-                key: idx + 1
-                for idx, (key, value) in enumerate(sorted(self._dictionary.items(), key=lambda x: x[1], reverse=True))
-            }
+            sort_terms = sorted(self._dictionary.items(), key=lambda x: x[1], reverse=True)
+            self._dictionary = self._build_lookup(terms=sort_terms)
 
-            # add the <unk> token to the embedding lookup
-            size = len(self._dictionary)
-            self._dictionary[self._unknown] = size + 1
-
-        self._reverse = {v: k for k, v in self._dictionary.items()}
+        self._reverse = {v: k for k, v in sorted(self._dictionary.items(), key=lambda x: x[1])}
         return self
 
     def transform(self, corpus):
