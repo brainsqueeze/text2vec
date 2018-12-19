@@ -16,7 +16,7 @@ class TextAttention(object):
     """
 
     def __init__(self, max_sequence_len, vocab_size, embedding_size, num_hidden, attention_size, is_training=False):
-        self.seq_input = tf.placeholder(dtype=tf.int32, shape=[None, max_sequence_len], name='input')
+        self.seq_input = tf.placeholder(dtype=tf.int32, shape=[None, max_sequence_len], name='sequence-input')
         self.keep_prob = tf.placeholder_with_default([1.0, 1.0, 1.0], shape=(3,))
 
         self.__use_gpu = tf.test.is_gpu_available()
@@ -29,15 +29,16 @@ class TextAttention(object):
 
         self._input_keep_prob, self._lstm_keep_prob, self._dense_keep_prob = tf.unstack(self.keep_prob)
 
+        embeddings = tf.Variable(
+            tf.random_uniform([vocab_size, self._dims], -1.0, 1.0),
+            name="embeddings",
+            dtype=tf.float32,
+            trainable=True
+        )
+
         # input embedding
-        with tf.variable_scope('embedding'):
+        with tf.variable_scope('input'):
             self._seq_lengths = tf.count_nonzero(self.seq_input, axis=1, name="sequence_lengths")
-            embeddings = tf.Variable(
-                tf.random_uniform([vocab_size, self._dims], -1.0, 1.0),
-                name="embeddings",
-                dtype=tf.float32,
-                trainable=True
-            )
             self._input = tf.nn.embedding_lookup(embeddings, self.seq_input)
             x = self._input_op()
 
