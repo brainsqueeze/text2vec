@@ -12,9 +12,9 @@ import os
 class Embedder(object):
 
     def __init__(self):
-        log_dir = os.path.dirname(os.path.abspath(__file__)) + "/../../" + os.environ["MODEL_PATH"]
+        self.__log_dir = os.path.dirname(os.path.abspath(__file__)) + "/../../" + os.environ["MODEL_PATH"]
 
-        with open(log_dir + "/lookup.pkl", "rb") as pf:
+        with open(self.__log_dir + "/lookup.pkl", "rb") as pf:
             self.lookup = pickle.load(pf)
             self.max_seq_len = self.lookup.max_sequence_length
 
@@ -24,20 +24,27 @@ class Embedder(object):
             allow_soft_placement=True,
             log_device_placement=False
         )
-        self.__session = tf.Session(config=sess_config)
+        graph = self.__load_model()
+        self.__session = tf.Session(graph=graph, config=sess_config)
 
-        model = tf.saved_model.loader.load(
-            sess=self.__session,
-            tags=[tf.saved_model.tag_constants.SERVING],
-            export_dir=log_dir + "/saved"
-        )
+    def __load_model(self):
+        name = "embedder"
+        model_dir = self.__log_dir + "/saved"
+        with tf.gfile.GFile(model_dir + '/frozen_model.pb', 'rb') as f:
+            graph_def_optimized = tf.GraphDef()
+            graph_def_optimized.ParseFromString(f.read())
 
-        inputs = model.signature_def[tf.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY].inputs
-        outputs = model.signature_def[tf.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY].outputs
+        with tf.Graph().as_default() as graph:
+            tf.import_graph_def(graph_def_optimized, name=name)
 
-        graph = tf.get_default_graph()
-        self.seq_input = graph.get_tensor_by_name(inputs['seq_input'].name)
-        self.embedding = graph.get_tensor_by_name(outputs['embedding'].name)
+        embed_tensor_names = [
+            op.name for op in graph.get_operations()
+            if 'context' in op.name and 'attention' in op.name and op.type != 'Const']
+
+        assert len(embed_tensor_names) == 1
+        self.seq_input = graph.get_tensor_by_name(f'{name}/sequence-input:0')
+        self.embedding = graph.get_tensor_by_name(embed_tensor_names[0] + ':0')
+        return graph
 
     def _pad_sequence(self, sequence):
         sequence = np.array(sequence, dtype=np.int32)[:self.max_seq_len]

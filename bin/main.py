@@ -4,8 +4,7 @@ import tensorflow as tf
 import numpy as np
 from . import utils
 
-from text2vec.serving_prep import freeze_graph
-
+from .serving_prep import freeze_graph
 import pickle
 
 import argparse
@@ -274,6 +273,7 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
             outputs={'embedding': model.embedding}
         )
 
+    utils.log("Freezing computation graph for inferencing")
     freeze_graph(model_dir=log_dir + "/saved")
     return lstm_file_name
 
