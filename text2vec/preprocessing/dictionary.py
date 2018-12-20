@@ -16,7 +16,7 @@ class EmbeddingLookup(object):
         self._use_tf_idf = use_tf_idf_importance
 
         if preprocessor is None:
-            self.__process = lambda x: x.lower().strip()
+            self.__process = self.default_processor
         else:
             self.__process = preprocessor
 
@@ -28,6 +28,10 @@ class EmbeddingLookup(object):
         self.__max_sequence_length = 0
 
         self.__error_message = "You must fit the lookup first, either by calling the fit or fit_transform methods."
+
+    @staticmethod
+    def default_processor(text):
+        return text.lower().strip()
 
     def _build_lookup(self, terms):
         top = {key: idx + 2 for idx, (key, value) in enumerate(terms)}
