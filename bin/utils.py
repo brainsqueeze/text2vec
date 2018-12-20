@@ -24,23 +24,17 @@ def load_glove_vectors(lookup, glove_path):
 
             if token in lookup:
                 vocab.append(token)
-                # model_order = lookup[token]
                 weights.append(list(map(float, values)))
-                # ordering.append((count, model_order))
                 count += 1
 
             if count > len(lookup):
                 break
 
-    # ordering, _ = zip(*sorted(ordering, key=lambda idx: idx[1]))
     weights = np.array(weights, dtype=np.float32)
-    # weights = weights[np.array(ordering)]
     unknown = weights.mean(axis=0)[:, None].T
-    pad_vector = np.random.random((1, weights.shape[1]))
-    # weights = np.vstack([pad_vector, weights, unknown])
-
-    vocab.append('<unk>')
-    return (weights, unknown, pad_vector), vocab
+    eos_vector = np.random.random((1, weights.shape[1]))
+    bos_vector = np.random.random((1, weights.shape[1]))
+    return (weights, unknown, eos_vector, bos_vector), vocab
 
 
 def pad_sequence(sequence, max_sequence_length):

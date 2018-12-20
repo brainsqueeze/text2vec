@@ -104,17 +104,18 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
     weights = None
     if glove_embeddings_file is not None:
         utils.log("Using GloVe embeddings from Common Crawl")
-        (weights, unk, pad), glove_vocab = utils.load_glove_vectors(lookup, glove_path=glove_embeddings_file)
+        (weights, unk, eos, bos), glove_vocab = utils.load_glove_vectors(lookup, glove_path=glove_embeddings_file)
+        glove_vocab.append(lookup.unknown)  # add the unknown sequence tag to the GloVe vocab
         full_text = lookup.fit_transform(corpus=train_corpus, vocab_set=set(glove_vocab))
         _, ordering = zip(*sorted([(word, lookup[word]) for word in glove_vocab], key=lambda z: z[1]))
         ordering = np.array(ordering, np.int32)
         weights = np.vstack([weights, unk])[ordering - 1]  # re-order the weights to match this particular vocabulary
-        weights = np.vstack([pad, weights])
+        weights = np.vstack([eos, bos, weights])
         cv_x = lookup.transform(corpus=cv_corpus)
-        del(unk, pad, ordering, glove_vocab)
+        del(unk, eos, bos, ordering, glove_vocab)
 
     utils.log("Getting the maximum sequence length and vocab size")
-    vocab_size = max([max(seq) for seq in full_text + cv_x]) + 1
+    vocab_size = max(map(max, full_text + cv_x)) + 1
 
     with open(log_dir + "/lookup.pkl", "wb") as pf:
         pickle.dump(lookup, pf)
@@ -185,7 +186,6 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
     ]
     text_x = np.array([utils.pad_sequence(seq, lookup.max_sequence_length) for seq in lookup.transform(test_sentences)])
 
-    # builder = tf.saved_model.builder.SavedModelBuilder(export_dir=log_dir + "/saved")
     with tf.Session(config=sess_config) as sess:
         saver = tf.train.Saver()
         sess.run(tf.global_variables_initializer())
@@ -198,10 +198,7 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
         # add metadata to embeddings for visualization purposes
         config_ = tf.contrib.tensorboard.plugins.projector.ProjectorConfig()
         embedding_conf = config_.embeddings.add()
-        if use_attention:
-            embeddings = sess.graph.get_tensor_by_name("embeddings:0")
-        else:
-            embeddings = sess.graph.get_tensor_by_name("embedding/embeddings:0")
+        embeddings = sess.graph.get_tensor_by_name("embeddings:0")
         embedding_conf.tensor_name = embeddings.name
         embedding_conf.metadata_path = log_dir + "/metadata.tsv"
         tf.contrib.tensorboard.plugins.projector.visualize_embeddings(summary_writer_train, config_)
