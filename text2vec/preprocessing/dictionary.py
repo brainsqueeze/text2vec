@@ -117,7 +117,7 @@ class EmbeddingLookup(object):
         corpus = [
             [
                 self.__dictionary[word] if word in self.__dictionary else self.__dictionary[self.unknown]
-                for word in self._tokenizer(text.lower().strip())
+                for word in self._tokenizer(self.__process(text))
             ] for text in corpus]
         return corpus
 

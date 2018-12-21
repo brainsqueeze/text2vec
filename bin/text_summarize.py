@@ -30,17 +30,21 @@ def responder(results, error, message):
     )
 
 
-def cosine_similarity_sort(net_vector, embedding_matrix):
+def cosine_similarity_sort(net_vector, embedding_matrix, attend=False):
     """
     Computes the cosine similarity scores and then returns
     the sorted results
     :param net_vector: the context vector for the entire document (ndarray)
     :param embedding_matrix: the context vectors (row vectors) for each constituent body of text (ndarray)
+    :param attend: set flag to get the self-attention for the embeddings (bool, optional)
     :return: (sorted order of documents, cosine similarity scores)
     """
 
     assert net_vector.shape[0] == 1
     assert net_vector.shape[-1] == embedding_matrix.shape[-1]
+
+    if attend:
+        embedding_matrix = attention(embedding_matrix, embedding_matrix, embedding_matrix)
 
     net_vector /= np.linalg.norm(net_vector, axis=1, keepdims=True)
     embedding_matrix /= np.linalg.norm(embedding_matrix, axis=1, keepdims=True)
@@ -49,6 +53,7 @@ def cosine_similarity_sort(net_vector, embedding_matrix):
     embedding_matrix[np.isnan(embedding_matrix)] = 0
 
     similarity = np.dot(net_vector, embedding_matrix.T)
+    similarity = np.clip(similarity, -1, 1)
     sort = np.argsort(1 - similarity, axis=1)[0]
 
     return sort, similarity.flatten()[sort]
@@ -78,7 +83,7 @@ def choose(sentences, scores, embeddings):
 
     angles = angle_from_cosine(scores)
     likelihood = np.exp(-angles) / np.exp(-angles).sum()
-    threshold = np.percentile(likelihood, 70)
+    threshold = likelihood.mean()
     cut = likelihood >= threshold
     return sentences[cut], scores[cut], embeddings[cut]
 
@@ -94,11 +99,11 @@ def text_pass_filter(texts, texts_embeddings, net_vector):
 
     sorted_order, scores = cosine_similarity_sort(
         net_vector=net_vector,
-        embedding_matrix=texts_embeddings
+        embedding_matrix=texts_embeddings,
+        attend=False
     )
 
     texts = np.array(texts)[sorted_order]
-
     filtered_texts, filtered_scores, filtered_embeddings = choose(
         sentences=texts,
         scores=scores,
@@ -106,6 +111,68 @@ def text_pass_filter(texts, texts_embeddings, net_vector):
     )
 
     return filtered_texts, filtered_scores, filtered_embeddings
+
+
+def softmax(logits):
+    """
+    Computes the softmax function along rows
+    of the incoming logits matrix
+    :param logits: (ndarray)
+    :return: array of the same shape as logits (ndarray)
+    """
+
+    soft = np.exp(logits)
+    soft[np.isinf(soft)] = 1e10
+    soft /= np.sum(soft, axis=0)
+    soft = np.clip(soft, 0.0, 1.0)
+    return soft
+
+
+def attention(queries, keys, values, mask_future=True):
+    """
+    Computes the dot-product attention, future masking is turned
+    on by default
+    :param queries: dimensions (C, D) (ndarray)
+    :param keys: dimensions (N, D) (ndarray)
+    :param values: dimensions (N, M) (ndarray)
+    :param mask_future: (bool)
+    :return: (ndarray)
+    """
+
+    numerator = np.dot(queries, keys.T)
+    denominator = np.sqrt(keys.shape[-1])
+
+    if mask_future:
+        upper = (1 + 1e9) * np.triu(np.ones_like(numerator), k=1)  # strictly upper triangle, no diagonal
+        mask = 1 - upper
+        numerator *= mask
+
+    scores = numerator / denominator
+    scores = softmax(scores)
+    return np.dot(scores, values)
+
+
+def normal(vectors):
+    """
+    Computes the normal to a vector bundle
+    :param vectors: dimensions (N, C) (ndarray)
+    :return: (C) (ndarray)
+    """
+
+    n = np.sum(vectors, axis=0)
+    n /= np.linalg.norm(n, axis=0)
+    return n
+
+
+def attended_norm(vectors):
+    """
+    Runs self-attention before computing the normal vector
+    :param vectors: dimensions (N, C) (ndarray)
+    :return: (C) (ndarray)
+    """
+
+    vectors = attention(queries=vectors, keys=vectors, values=vectors)
+    return normal(vectors)
 
 
 @app.route('/condense', methods=['POST', 'GET'])
@@ -131,38 +198,29 @@ def compute():
         }
         return responder(results=results, error=400, message="No text provided")
 
-    # get the embedding vectors for each paragraph as groups
-    paragraphs = th.split_paragraphs(body)
-    x_paragraph = e.process_input(paragraphs)
-    embedding_paragraph = e.embed(x_paragraph)
-
-    doc_embedding = np.sum(embedding_paragraph, axis=0)[None, :]
-    paragraphs, scores, embedding_paragraph = text_pass_filter(
-        texts=paragraphs,
-        texts_embeddings=embedding_paragraph,
-        net_vector=doc_embedding
-    )
-
     # get the embedding vectors for each sentence in the document
-    doc_embedding = np.sum(embedding_paragraph, axis=0)[None, :]
-    sentences = [th.split_sentences(sent) for sent in paragraphs]
-    x_sentence = np.vstack([e.process_input([sent]) for para in sentences for sent in para])
-    embedding_sentence = e.embed(x_sentence)
+    sentences = [
+        sentence for sent in th.split_paragraphs(body)
+        for sentence in th.split_sentences(sent)
+        if len(sentence.split()) > 3
+    ]
+    x_sentences = e.process_input(sentences)
+    s_embedded = e.embed(x_sentences)
 
-    sentences_flat = np.array([sent for block in sentences for sent in block])
+    # compute global normal vector
+    global_norm = attended_norm(s_embedded)[None, :]
     top_sentences, top_scores, _ = text_pass_filter(
-        texts=sentences_flat,
-        texts_embeddings=embedding_sentence,
-        net_vector=doc_embedding
+        texts=sentences,
+        texts_embeddings=s_embedded,
+        net_vector=global_norm
     )
-
-    data = [{"text": text, "relevanceScore": score} for text, score in zip(top_sentences, top_scores.astype(float))]
-
     results = {
         "elapsed_time": time.time() - st,
-        "data": data
+        "data": [{
+            "text": text,
+            "relevanceScore": score
+        } for text, score in zip(top_sentences, top_scores.astype(float))]
     }
-
     return responder(results=results, error=200, message="Success")
 
 
