@@ -1,6 +1,9 @@
 import tensorflow as tf
 from tensorflow.python.tools import optimize_for_inference_lib
 
+import argparse
+import os
+
 
 def freeze_graph(model_dir):
 
@@ -27,3 +30,20 @@ def freeze_graph(model_dir):
     with tf.gfile.GFile(model_dir + '/frozen_model.pb', 'wb') as f:
         f.write(output_graph_def.SerializeToString())
     return
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument("model_name", type=str, help="Folder name in which to store model.")
+    parser.add_argument("--model_path", type=str, help="Path to place the saved model.")
+    args = parser.parse_args()
+
+    if args.model_name is None:
+        print(args.print_help())
+        exit(2)
+
+    if args.model_path and not os.path.isdir(args.model_path):
+        print(f"{args.model_path} is not a valid directory")
+        exit(2)
+
+    freeze_graph(model_dir=f"{args.model_path}/{args.model_name}/saved")

@@ -117,8 +117,10 @@ class EmbeddingLookup(object):
         corpus = [
             [
                 self.__dictionary[word] if word in self.__dictionary else self.__dictionary[self.unknown]
-                for word in self._tokenizer(self.__process(text))
-            ] for text in corpus]
+                for word in self._tokenizer(text)
+            ] for text in map(self.__process, corpus)
+            if self._tokenizer(text)
+        ]
         return corpus
 
     def fit_transform(self, corpus, vocab_set=None):

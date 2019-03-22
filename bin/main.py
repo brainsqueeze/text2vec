@@ -14,19 +14,21 @@ import os
 root = os.path.dirname(os.path.abspath(__file__))
 
 
-def load_text():
+def load_text(data_path=None):
     """
     Loads the training data from a text file
     :return: (list)
     """
 
-    path = root + "/../text2vec/data/"
-    files = [f for f in os.listdir(path) if os.path.isfile(os.path.join(path, f))]
+    path = f"{data_path}/" if data_path else f"{root}/../text2vec/data/"
+    files = [f for f in os.listdir(path) if os.path.isfile(os.path.join(path, f)) if '.txt' in f]
     texts = []
 
     for file in files:
         with open(path + file, "r", encoding="latin1") as f:
-            texts.extend(f.readlines())
+            for line in f:
+                if line.strip() != '':
+                    texts.append(line.strip())
 
     return texts
 
@@ -65,6 +67,7 @@ def mini_batches(corpus, size, n_batches, max_len, seed):
 
 def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, attention_size=128, layers=8,
           batch_size=32, num_batches=50, num_epochs=10, glove_embeddings_file=None,
+          data_path=None, model_path=None,
           use_tf_idf=False, use_attention=False, verbose=False):
     """
     Core training algorithm
@@ -81,17 +84,19 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
     :param num_epochs: number of training epochs (int, optional)
     :param glove_embeddings_file: file location of the pre-trained GloVe embeddings,
                                   if set will override some settings above (str, optional)
+    :param data_path: valid path to the training data (str)
+    :param model_path: valid path to where the model will be saved (str)
     :param use_tf_idf: set to True to choose embedding tokens based on TF-IDF values rather than frequency alone (bool)
     :param use_attention: set to True to use the self-attention only model (bool)
     :param verbose: set to True to log learned weight distributions and validation set performance (bool, optional)
     """
 
-    log_dir = root + "/../../text2vec/" + model_folder
+    log_dir = f"{model_path}/{model_folder}" if model_path else f"{root}/../../text2vec/{model_folder}"
     if not os.path.exists(log_dir):
         os.mkdir(log_dir)
 
     utils.log("Fetching corpus and transforming to frequency domain")
-    corpus = load_text()
+    corpus = load_text(data_path=data_path)
 
     utils.log("Splitting the training and validation sets")
     train_corpus, cv_corpus = test_val_split(corpus=corpus, val_size=512)
@@ -181,10 +186,13 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
         log_device_placement=False
     )
     test_sentences = [
-        "The movie was great!",
-        "The movie was terrible."
+        "To provide food and shelter.",
+        "To provide relief for opioid addicts."
     ]
-    text_x = np.array([utils.pad_sequence(seq, lookup.max_sequence_length) for seq in lookup.transform(test_sentences)])
+    text_x = np.array([
+        utils.pad_sequence(seq, lookup.max_sequence_length)
+        for seq in lookup.transform(test_sentences)
+    ])
 
     with tf.Session(config=sess_config) as sess:
         saver = tf.train.Saver()
@@ -291,11 +299,22 @@ def main():
     parser.add_argument("--attention", action='store_true', help="Set to use attention transformer model.")
     parser.add_argument("--use_glove", action='store_true', help="Set to use the GloVe Common Crawl embeddings.")
     parser.add_argument("--glove_file", type=str, help="GloVe embeddings file.", default=None)
+    parser.add_argument("--data_path", type=str, help="Path to the training data file(s).")
+    parser.add_argument("--model_path", type=str, help="Path to place the saved model.")
+    parser.add_argument("--verbose", action='store_true', help="Set to evaluate the CV set after each epoch.")
 
     args = parser.parse_args()
 
     if args.run is None or args.model_name is None:
         print(args.print_help())
+        exit(2)
+
+    if args.data_path and not os.path.isdir(args.data_path):
+        print(f"{args.data_path} is not a valid directory")
+        exit(2)
+
+    if args.model_path and not os.path.isdir(args.model_path):
+        print(f"{args.model_path} is not a valid directory")
         exit(2)
 
     if args.run == "train":
@@ -311,7 +330,10 @@ def main():
             num_epochs=args.epochs,
             glove_embeddings_file=args.glove_file,
             use_tf_idf=bool(args.idf),
-            use_attention=bool(args.attention)
+            use_attention=bool(args.attention),
+            data_path=args.data_path,
+            model_path=args.model_path,
+            verbose=args.verbose
         )
     elif args.run == "infer":
         os.environ["MODEL_PATH"] = args.model_name
