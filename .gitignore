@@ -3,6 +3,7 @@
 **/__pycache__
 .DS_store
 *.sh
+*.ipynb
 
 # JavaScript configs and dependencies
 **/.eslintrc.json
