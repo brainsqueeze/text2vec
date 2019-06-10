@@ -1,76 +1,23 @@
 import tensorflow as tf
 
 
-def build_cell(num_layers, num_hidden, keep_prob, use_cuda=False):
-    """
-    Builds up LSTM cells programmatically
-    :param num_layers: (int)
-    :param num_hidden: dimension of hidden weights (int)
-    :param keep_prob: (float, [0, 1])
-    :param use_cuda: (bool)
-    :return: LSTM cell object
-    """
+def scalar_dot_product_attention(query, key, value, mask_future=False):
+    with tf.variable_scope('scalar-dot-attention'):
+        numerator = tf.einsum('ijk,ilk->ijl', query, key)
+        denominator = tf.sqrt(tf.cast(tf.shape(key)[1], dtype=tf.float32))
 
-    cells = []
+        if mask_future:
+            upper = (1 + 1e9) * tf.linalg.band_part(tf.ones_like(numerator), num_lower=0, num_upper=-1)
+            mask = 1 - upper
+            numerator *= mask
 
-    for _ in range(num_layers):
-        if use_cuda:
-            cell = tf.contrib.cudnn_rnn.CudnnCompatibleLSTMCell(num_hidden)
-        else:
-            cell = tf.nn.rnn_cell.LSTMCell(
-                num_hidden,
-                forget_bias=0.0,
-                dtype=tf.float32,
-                initializer=tf.random_uniform_initializer(-0.1, 0.1),
-            )
-
-        cell = tf.nn.rnn_cell.DropoutWrapper(cell=cell, output_keep_prob=keep_prob)
-        cells.append(cell)
-
-    if num_layers > 1:
-        return tf.nn.rnn_cell.MultiRNNCell(cells)
-    return cells[0]
+        x = tf.nn.softmax(numerator / denominator)
+        return tf.einsum('ijk,ikl->ijl', x, value)
 
 
-def sum_reduce(seq_fw, seq_bw):
-    """
-    Combines forward and backward components of bi-directional RNNs by summing them element-wise
-    :param seq_fw: forward object
-    :param seq_bw: backward object
-    :return: same object type as the input sequence objects, summed element-wise
-    """
-
-    if tf.contrib.framework.nest.is_sequence(seq_fw):
-        tf.contrib.framework.nest.assert_same_structure(seq_fw, seq_bw)
-
-        x_flat = tf.contrib.framework.nest.flatten(seq_fw)
-        y_flat = tf.contrib.framework.nest.flatten(seq_bw)
-
-        flat = []
-        for x_i, y_i in zip(x_flat, y_flat):
-            flat.append(tf.add_n([x_i, y_i]))
-
-        return tf.contrib.framework.nest.pack_sequence_as(seq_fw, flat)
-    return tf.add_n([seq_fw, seq_bw])
-
-
-def concat_reducer(seq_fw, seq_bw):
-    """
-    Combines forward and backward components of bi-directional RNNs by concatenation
-    :param seq_fw: forward object
-    :param seq_bw: backward object
-    :return: same object type as the input sequence objects, concatenated
-    """
-
-    if tf.contrib.framework.nest.is_sequence(seq_fw):
-        tf.contrib.framework.nest.assert_same_structure(seq_fw, seq_bw)
-
-        x_flat = tf.contrib.framework.nest.flatten(seq_fw)
-        y_flat = tf.contrib.framework.nest.flatten(seq_bw)
-
-        flat = []
-        for x_i, y_i in zip(x_flat, y_flat):
-            flat.append(tf.concat([x_i, y_i], axis=-1))
-
-        return tf.contrib.framework.nest.pack_sequence_as(seq_fw, flat)
-    return tf.concat([seq_fw, seq_bw], axis=-1)
+def layer_norm_compute(x, epsilon=1e-8, scale=1.0, bias=0):
+    with tf.variable_scope('layer-norm'):
+        mean = tf.reduce_mean(x, axis=-1, keepdims=True)
+        variance = tf.reduce_mean(tf.square(x - mean), axis=-1, keepdims=True)
+        norm_x = (x - mean) * tf.rsqrt(variance + epsilon)
+        return norm_x * scale + bias

@@ -1,17 +1,14 @@
-from text2vec.preprocessing import EmbeddingLookup
+from text2vec.preprocessing import utils as str_utils
 from text2vec import models
 import tensorflow as tf
 import numpy as np
 from . import utils
 
-from .serving_prep import freeze_graph
-import pickle
-
 import argparse
-import json
 import os
 
 root = os.path.dirname(os.path.abspath(__file__))
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
 
 def load_text(data_path=None):
@@ -21,7 +18,7 @@ def load_text(data_path=None):
     """
 
     path = f"{data_path}/" if data_path else f"{root}/../text2vec/data/"
-    files = [f for f in os.listdir(path) if os.path.isfile(os.path.join(path, f)) if '.txt' in f]
+    files = [f for f in os.listdir(path) if os.path.isfile(os.path.join(path, f))]
     texts = []
 
     for file in files:
@@ -47,13 +44,12 @@ def test_val_split(corpus, val_size):
     return corpus, cv_set
 
 
-def mini_batches(corpus, size, n_batches, max_len, seed):
+def mini_batches(corpus, size, n_batches, seed):
     """
     Mini-batch generator for feeding training examples into the model
     :param corpus: training set of sequence-encoded data (list)
     :param size: size of each mini-batch (int)
     :param n_batches: number of mini-batches in each epoch (int)
-    :param max_len: maximum sequence (time-steps) length (int)
     :param seed: numpy randomization seed (int)
     :return: mini-batch, dimensions are [batch_size, max_len] (np.ndarray)
     """
@@ -62,7 +58,7 @@ def mini_batches(corpus, size, n_batches, max_len, seed):
     s = np.random.choice(range(len(corpus)), replace=False, size=min(len(corpus), size * n_batches)).astype(np.int32)
 
     for mb in range(n_batches):
-        yield np.array([utils.pad_sequence(corpus[index], max_len) for index in s[mb * size: (mb + 1) * size]])
+        yield [' '.join(str_utils.clean_and_split(corpus[index])) for index in s[mb * size: (mb + 1) * size]]
 
 
 def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, attention_size=128, layers=8,
@@ -100,82 +96,48 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
 
     utils.log("Splitting the training and validation sets")
     train_corpus, cv_corpus = test_val_split(corpus=corpus, val_size=512)
+    cv_tokens = [' '.join(str_utils.clean_and_split(text)) for text in cv_corpus]
 
     utils.log("Fitting embedding lookup and transforming the training and cross-validation sets")
-    lookup = EmbeddingLookup(top_n=num_tokens, use_tf_idf_importance=use_tf_idf)
-    full_text = lookup.fit_transform(corpus=train_corpus)
-    cv_x = lookup.transform(corpus=cv_corpus)
+    hash_map, max_sequence_length = str_utils.get_top_tokens(corpus, n_top=num_tokens)
 
-    weights = None
+    # weights = None
     if glove_embeddings_file is not None:
-        utils.log("Using GloVe embeddings from Common Crawl")
-        (weights, unk, eos, bos), glove_vocab = utils.load_glove_vectors(lookup, glove_path=glove_embeddings_file)
-        glove_vocab.append(lookup.unknown)  # add the unknown sequence tag to the GloVe vocab
-        full_text = lookup.fit_transform(corpus=train_corpus, vocab_set=set(glove_vocab))
-        _, ordering = zip(*sorted([(word, lookup[word]) for word in glove_vocab], key=lambda z: z[1]))
-        ordering = np.array(ordering, np.int32)
-        weights = np.vstack([weights, unk])[ordering - 1]  # re-order the weights to match this particular vocabulary
-        weights = np.vstack([eos, bos, weights])
-        cv_x = lookup.transform(corpus=cv_corpus)
-        del(unk, eos, bos, ordering, glove_vocab)
+        raise NotImplementedError("GloVe embeddings not supported at this time")
+    #     utils.log("Using GloVe embeddings from Common Crawl")
+    #     (weights, unk, eos, bos), glove_vocab = utils.load_glove_vectors(lookup, glove_path=glove_embeddings_file)
+    #     glove_vocab.append(lookup.unknown)  # add the unknown sequence tag to the GloVe vocab
+    #     full_text = lookup.fit_transform(corpus=train_corpus, vocab_set=set(glove_vocab))
+    #     _, ordering = zip(*sorted([(word, lookup[word]) for word in glove_vocab], key=lambda z: z[1]))
+    #     ordering = np.array(ordering, np.int32)
+    #     weights = np.vstack([weights, unk])[ordering - 1]  # re-order the weights to match this particular vocabulary
+    #     weights = np.vstack([eos, bos, weights])
+    #     cv_x = lookup.transform(corpus=cv_corpus)
+    #     del(unk, eos, bos, ordering, glove_vocab)
 
-    utils.log("Getting the maximum sequence length and vocab size")
-    vocab_size = max(map(max, full_text + cv_x)) + 1
-
-    with open(log_dir + "/lookup.pkl", "wb") as pf:
-        pickle.dump(lookup, pf)
-
-    # write word lookup to a TSV file for TensorBoard visualizations
-    with open(log_dir + "/metadata.tsv", "w") as lf:
-        reverse = lookup.reverse
-        for k in reverse:
-            lf.write(reverse[k] + '\n')
-
-    utils.log(f"Padding sequences in corpus to length {lookup.max_sequence_length}")
-    full_text = np.array([utils.pad_sequence(seq, lookup.max_sequence_length) for seq in full_text])
-    cv_x = np.array([utils.pad_sequence(seq, lookup.max_sequence_length) for seq in cv_x])
     keep_probabilities = [0.9, 0.9, 1.0]
 
     utils.log("Building computation graph")
-    file_sys = open(log_dir + "/model.json", "w")
-    meta_data = {
-        "embeddingDimensions": num_hidden,
-        "maxSequenceLength": lookup.max_sequence_length,
-        "vocabSize": vocab_size,
-        "attentionWeightDim": attention_size,
-        "trainingParameters": {
-            "keepProbabilities": keep_probabilities,
-            "nBatches": num_batches,
-            "batchSize": batch_size,
-            "maxEpochs": num_epochs
-        }
-    }
-    json.dump(meta_data, file_sys, indent=2)
-    file_sys.close()
-
     if use_attention:
-        model = models.Tensor2Tensor(
-            max_sequence_len=lookup.max_sequence_length,
+        model = models.Transformer(
+            max_sequence_len=max_sequence_length,
             embedding_size=embedding_size,
-            vocab_size=vocab_size,
-            word_weights=weights,
+            token_hash=hash_map,
             layers=layers,
-            is_training=True
+            n_stacks=1
         )
     else:
-        model = models.TextAttention(
-            max_sequence_len=lookup.max_sequence_length,
-            embedding_size=embedding_size,
-            vocab_size=vocab_size,
-            num_hidden=num_hidden,
-            attention_size=attention_size,
-            is_training=True
-        )
+        raise NotImplementedError("Only the Transformer model is currently available")
+        # model = models.TextAttention(
+        #     max_sequence_len=lookup.max_sequence_length,
+        #     embedding_size=embedding_size,
+        #     vocab_size=vocab_size,
+        #     num_hidden=num_hidden,
+        #     attention_size=attention_size,
+        #     is_training=True
+        # )
 
     lstm_file_name = None
-    if not os.path.exists(log_dir):
-        os.mkdir(log_dir)
-
     gpu_options = tf.GPUOptions(
         per_process_gpu_memory_fraction=0.8,
         allow_growth=True
@@ -189,40 +151,28 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
         "To provide food and shelter.",
         "To provide relief for opioid addicts."
     ]
-    text_x = np.array([
-        utils.pad_sequence(seq, lookup.max_sequence_length)
-        for seq in lookup.transform(test_sentences)
-    ])
+    test_tokens = [' '.join(str_utils.clean_and_split(text)) for text in test_sentences]
 
     with tf.Session(config=sess_config) as sess:
         saver = tf.train.Saver()
-        sess.run(tf.global_variables_initializer())
+        sess.run([tf.global_variables_initializer(), tf.tables_initializer()])
 
         summary_writer_train = tf.summary.FileWriter(log_dir + '/training', sess.graph)
         summary_writer_dev = tf.summary.FileWriter(log_dir + '/validation', sess.graph)
         summary_writer_train.add_graph(graph=sess.graph)
         summary_writer_train.flush()
 
-        # add metadata to embeddings for visualization purposes
-        config_ = tf.contrib.tensorboard.plugins.projector.ProjectorConfig()
-        embedding_conf = config_.embeddings.add()
-        embeddings = sess.graph.get_tensor_by_name("embeddings:0")
-        embedding_conf.tensor_name = embeddings.name
-        embedding_conf.metadata_path = log_dir + "/metadata.tsv"
-        tf.contrib.tensorboard.plugins.projector.visualize_embeddings(summary_writer_train, config_)
-
         model.assign_clip_norm(sess, 100000.0)
 
         step = 1
         warm_up_steps = 4000
         for epoch in range(num_epochs):
-            print("\t Epoch: {0}".format(epoch + 1))
+            print(f"\t Epoch: {epoch + 1}")
             train_summary = tf.Summary()
             i = 1
 
-            for x in mini_batches(full_text, size=batch_size, n_batches=num_batches,
-                                  max_len=lookup.max_sequence_length, seed=epoch):
-                if x.shape[0] == 0:
+            for x in mini_batches(train_corpus, size=batch_size, n_batches=num_batches, seed=epoch):
+                if len(x) == 0:
                     continue
 
                 learning_rate = embedding_size ** (-0.5) * min(step ** (-0.5), step * warm_up_steps ** (-1.5))
@@ -230,7 +180,7 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
                 loss_val, gradient, current_lr, _ = sess.run(
                     [model.loss, model.gradient_norm, model.lr, model.train],
                     feed_dict={
-                        model.seq_input: x,
+                        model.enc_tokens: x,
                         model.keep_prob: keep_probabilities
                     }
                 )
@@ -239,32 +189,35 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
                 train_summary.value.add(tag="gradient_norm", simple_value=gradient)
                 train_summary.value.add(tag="learning_rate", simple_value=current_lr)
 
-                summary_writer_train.add_summary(train_summary, epoch * num_batches + i)
+                summary_writer_train.add_summary(train_summary, step)
 
                 if i % (num_batches // 10) == 0:
-                    print("\t\t iteration {0} - loss: {1}".format(i, loss_val))
+                    print(f"\t\t iteration {i} - loss: {loss_val}")
 
                     if verbose:
                         for var in tf.trainable_variables():
                             tf.summary.histogram(var.op.name, var)
                         merged = sess.run(tf.summary.merge_all())
-                        summary_writer_train.add_summary(merged, epoch * num_batches + i)
+                        summary_writer_train.add_summary(merged, step)
                 i += 1
                 step += 1
             summary_writer_train.flush()
 
-            vectors = sess.run(model.embedding, feed_dict={model.seq_input: text_x})
+            vectors = sess.run(model.embedding, feed_dict={model.enc_tokens: test_tokens})
             angle = utils.compute_angles(vectors)[0, 1]
             print(f"The 'angle' between `{'` and `'.join(test_sentences)}` is {angle} degrees")
 
             test_case_summary = tf.Summary()
             test_case_summary.value.add(tag="similarity angle", simple_value=angle)
-            summary_writer_dev.add_summary(test_case_summary, epoch * num_batches + i)
+            summary_writer_dev.add_summary(test_case_summary, step)
             summary_writer_dev.flush()
 
             if verbose:
                 dev_summary = tf.Summary()
-                cv_loss = sess.run(model.loss, feed_dict={model.seq_input: cv_x, model.keep_prob: keep_probabilities})
+                cv_loss = sess.run(
+                    model.loss,
+                    feed_dict={model.enc_tokens: cv_tokens, model.keep_prob: keep_probabilities}
+                )
                 dev_summary.value.add(tag="cost", simple_value=cv_loss)
                 summary_writer_dev.add_summary(dev_summary, epoch * num_batches + i)
                 summary_writer_dev.flush()
@@ -274,12 +227,10 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
         tf.saved_model.simple_save(
             session=sess,
             export_dir=log_dir + "/saved",
-            inputs={'sequences': model.seq_input},
+            inputs={'sequences': model.enc_tokens},
             outputs={'embedding': model.embedding}
         )
 
-    utils.log("Freezing computation graph for inferencing")
-    freeze_graph(model_dir=log_dir + "/saved")
     return lstm_file_name
 
 
