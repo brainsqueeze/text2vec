@@ -95,7 +95,7 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
     corpus = load_text(data_path=data_path)
 
     utils.log("Splitting the training and validation sets")
-    train_corpus, cv_corpus = test_val_split(corpus=corpus, val_size=512)
+    train_corpus, cv_corpus = test_val_split(corpus=corpus, val_size=64)
     cv_tokens = [' '.join(str_utils.clean_and_split(text)) for text in cv_corpus]
 
     utils.log("Fitting embedding lookup and transforming the training and cross-validation sets")
@@ -115,7 +115,7 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
     #     cv_x = lookup.transform(corpus=cv_corpus)
     #     del(unk, eos, bos, ordering, glove_vocab)
 
-    keep_probabilities = [0.9, 0.9, 1.0]
+    keep_probabilities = [0.9, 0.75, 1.0]
 
     utils.log("Building computation graph")
     if use_attention:
@@ -148,8 +148,8 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
         log_device_placement=False
     )
     test_sentences = [
-        "To provide food and shelter.",
-        "To provide relief for opioid addicts."
+        "The movie was great!",
+        "The movie was terrible."
     ]
     test_tokens = [' '.join(str_utils.clean_and_split(text)) for text in test_sentences]
 
@@ -168,8 +168,8 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
         warm_up_steps = 4000
         for epoch in range(num_epochs):
             print(f"\t Epoch: {epoch + 1}")
-            train_summary = tf.Summary()
             i = 1
+            summary_count = 1
 
             for x in mini_batches(train_corpus, size=batch_size, n_batches=num_batches, seed=epoch):
                 if len(x) == 0:
@@ -177,43 +177,50 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
 
                 learning_rate = embedding_size ** (-0.5) * min(step ** (-0.5), step * warm_up_steps ** (-1.5))
                 model.assign_lr(sess, learning_rate)
-                loss_val, gradient, current_lr, _ = sess.run(
-                    [model.loss, model.gradient_norm, model.lr, model.train],
-                    feed_dict={
-                        model.enc_tokens: x,
-                        model.keep_prob: keep_probabilities
-                    }
-                )
-
-                train_summary.value.add(tag="cost", simple_value=loss_val)
-                train_summary.value.add(tag="gradient_norm", simple_value=gradient)
-                train_summary.value.add(tag="learning_rate", simple_value=current_lr)
-
-                summary_writer_train.add_summary(train_summary, step)
-
+                feed_dict = {model.enc_tokens: x, model.keep_prob: keep_probabilities}
                 if i % (num_batches // 10) == 0:
-                    print(f"\t\t iteration {i} - loss: {loss_val}")
+                    train_summary = tf.Summary()
+                    operations = [model.loss, model.gradient_norm, model.lr, model.merged, model.train]
 
-                    if verbose:
-                        for var in tf.trainable_variables():
-                            tf.summary.histogram(var.op.name, var)
-                        merged = sess.run(tf.summary.merge_all())
-                        summary_writer_train.add_summary(merged, step)
+                    if summary_count == 10:
+                        run_metadata = tf.RunMetadata()
+                        loss_val, gradient, current_lr, summary, _ = sess.run(
+                            operations,
+                            feed_dict=feed_dict,
+                            options=tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE),
+                            run_metadata=run_metadata
+                        )
+                        summary_writer_train.add_run_metadata(run_metadata, tag=f'{step}')
+                    else:
+                        loss_val, gradient, current_lr, summary, _ = sess.run(operations, feed_dict=feed_dict)
+
+                    print(f"\t\t iteration {i} - loss: {loss_val}")
+                    train_summary.value.add(tag="cost", simple_value=loss_val)
+                    train_summary.value.add(tag="gradient_norm", simple_value=gradient)
+                    train_summary.value.add(tag="learning_rate", simple_value=current_lr)
+
+                    summary_writer_train.add_summary(train_summary, step)
+                    summary_writer_train.add_summary(summary, step)
+                    summary_writer_train.flush()
+                    summary_count += 1
+                else:
+                    sess.run(model.train, feed_dict=feed_dict)
+
                 i += 1
                 step += 1
-            summary_writer_train.flush()
-
-            vectors = sess.run(model.embedding, feed_dict={model.enc_tokens: test_tokens})
-            angle = utils.compute_angles(vectors)[0, 1]
-            print(f"The 'angle' between `{'` and `'.join(test_sentences)}` is {angle} degrees")
-
-            test_case_summary = tf.Summary()
-            test_case_summary.value.add(tag="similarity angle", simple_value=angle)
-            summary_writer_dev.add_summary(test_case_summary, step)
-            summary_writer_dev.flush()
 
             if verbose:
                 dev_summary = tf.Summary()
+                test_case_summary = tf.Summary()
+
+                vectors = sess.run(model.embedding, feed_dict={model.enc_tokens: test_tokens})
+                angle = utils.compute_angles(vectors)[0, 1]
+                print(f"The 'angle' between `{'` and `'.join(test_sentences)}` is {angle} degrees")
+
+                test_case_summary.value.add(tag="similarity angle", simple_value=angle)
+                summary_writer_dev.add_summary(test_case_summary, step)
+                summary_writer_dev.flush()
+
                 cv_loss = sess.run(
                     model.loss,
                     feed_dict={model.enc_tokens: cv_tokens, model.keep_prob: keep_probabilities}
@@ -224,7 +231,7 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
 
             lstm_file_name = saver.save(sess, log_dir + '/embedding_model', global_step=int((epoch + 1) * i))
 
-        tf.saved_model.simple_save(
+        tf.compat.v1.saved_model.simple_save(
             session=sess,
             export_dir=log_dir + "/saved",
             inputs={'sequences': model.enc_tokens},

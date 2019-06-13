@@ -103,8 +103,7 @@ class Transformer(object):
         # decoder pipeline
         with tf.variable_scope('decoder'):
             for _ in range(n_stacks):
-                decoded = h_dropout(
-                    self.__multi_head_attention(decoded, decoded, decoded, mask_future=True)) + decoded
+                decoded = h_dropout(self.__multi_head_attention(decoded, decoded, decoded, mask_future=True)) + decoded
                 decoded = tf_utils.layer_norm_compute(decoded)
 
                 cross_context = attention(encoded=encoded * enc_mask, decoded=decoded * dec_mask)

@@ -1,1 +1,1 @@
-from text2vec.preprocessing.dictionary import EmbeddingLookup
+from text2vec.preprocessing.utils import clean_and_split
