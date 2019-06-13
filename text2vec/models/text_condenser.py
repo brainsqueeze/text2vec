@@ -22,9 +22,7 @@ class Embedder(object):
         )
         self.__session = tf.Session(graph=tf.Graph(), config=sess_config)
         self.__load_model()
-        # self.__session.run(tf.tables_initializer())
-
-        self.predict("")
+        self.predict("")  # prime the graph to remove initial latency
 
     def __load_model(self):
         model = tf.compat.v1.saved_model.loader.load(

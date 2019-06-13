@@ -61,9 +61,9 @@ def mini_batches(corpus, size, n_batches, seed):
         yield [' '.join(str_utils.clean_and_split(corpus[index])) for index in s[mb * size: (mb + 1) * size]]
 
 
-def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, attention_size=128, layers=8,
-          batch_size=32, num_batches=50, num_epochs=10, glove_embeddings_file=None,
-          data_path=None, model_path=None,
+def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, max_allowed_seq=200,
+          attention_size=128, layers=8, batch_size=32, num_batches=50, num_epochs=10,
+          glove_embeddings_file=None, data_path=None, model_path=None,
           use_tf_idf=False, use_attention=False, verbose=False):
     """
     Core training algorithm
@@ -73,6 +73,7 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
     :param embedding_size: size of the word-embedding dimensions,
                            is overridden if the GloVe option is chosen (int, optional)
     :param num_hidden: number of hidden LSTM dimensions (int, optional)
+    :param max_allowed_seq: the maximum sequence length allowed, model will truncate if longer (int)
     :param attention_size: number of hidden attention-mechanism dimensions (int, optional)
     :param layers: number of multi-head attention mechanisms for transformer model (int, optional)
     :param batch_size: size of each mini-batch (int, optional)
@@ -100,6 +101,8 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, at
 
     utils.log("Fitting embedding lookup and transforming the training and cross-validation sets")
     hash_map, max_sequence_length = str_utils.get_top_tokens(corpus, n_top=num_tokens)
+    max_sequence_length = min(max_sequence_length, max_allowed_seq)
+    utils.log(f"Max sequence length: {max_sequence_length}")
 
     # weights = None
     if glove_embeddings_file is not None:
