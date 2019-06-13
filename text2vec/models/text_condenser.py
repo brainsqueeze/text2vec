@@ -22,6 +22,7 @@ class Embedder(object):
         )
         self.__session = tf.Session(graph=tf.Graph(), config=sess_config)
         self.__load_model()
+        # self.__session.run(tf.tables_initializer())
 
         self.predict("")
 
@@ -36,6 +37,8 @@ class Embedder(object):
         graph = self.__session.graph
         self.__seq_input = graph.get_tensor_by_name(model.signature_def[def_key].inputs["sequences"].name)
         self.__output = graph.get_tensor_by_name(model.signature_def[def_key].outputs["embedding"].name)
+
+        self.__session.run(graph.get_operation_by_name('init_all_tables'))
         return graph
 
     def __embed(self, corpus):
@@ -47,14 +50,14 @@ class Embedder(object):
         return vectors
 
     def predict(self, text):
-        corpus = [clean_and_split(text)]
+        corpus = [' '.join(clean_and_split(text))]
         vectors = self.__embed(corpus)
         return vectors[0]  # only 1 text at a time so the batch size is 1
 
     def embed(self, corpus):
         assert isinstance(corpus, list)
 
-        corpus = [clean_and_split(text) for text in corpus]
+        corpus = [' '.join(clean_and_split(text)) for text in corpus]
         vectors = self.__embed(corpus)
         return vectors
 

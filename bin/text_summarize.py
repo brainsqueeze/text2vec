@@ -204,8 +204,7 @@ def compute():
         for sentence in th.split_sentences(sent)
         if len(sentence.split()) > 3
     ]
-    x_sentences = e.process_input(sentences)
-    s_embedded = e.embed(x_sentences)
+    s_embedded = e.embed(sentences)
 
     # compute global normal vector
     global_norm = attended_norm(s_embedded)[None, :]
