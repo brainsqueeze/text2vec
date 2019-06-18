@@ -238,7 +238,8 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
             session=sess,
             export_dir=log_dir + "/saved",
             inputs={'sequences': model.enc_tokens},
-            outputs={'embedding': model.embedding}
+            outputs={'embedding': model.embedding},
+            legacy_init_op=tf.tables_initializer()
         )
 
     return lstm_file_name
