@@ -74,10 +74,8 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
     """
     Core training algorithm
     :param model_folder: name of the folder to create for the trained model (str)
-    :param num_tokens: number of vocab tokens to keep from the training corpus,
-                       is mutable if the GloVe option is chosen (int, optional)
-    :param embedding_size: size of the word-embedding dimensions,
-                           is overridden if the GloVe option is chosen (int, optional)
+    :param num_tokens: number of vocab tokens to keep from the training corpus (int, optional)
+    :param embedding_size: size of the word-embedding dimensions (int, optional)
     :param num_hidden: number of hidden LSTM dimensions (int, optional)
     :param max_allowed_seq: the maximum sequence length allowed, model will truncate if longer (int)
     :param attention_size: number of hidden attention-mechanism dimensions (int, optional)
