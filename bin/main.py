@@ -4,6 +4,8 @@ import tensorflow as tf
 import numpy as np
 from . import utils
 
+from tensorboard.plugins import projector
+
 import argparse
 import os
 
@@ -11,7 +13,7 @@ root = os.path.dirname(os.path.abspath(__file__))
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
 
-def load_text(data_path=None):
+def load_text(data_path=None, max_length=-1):
     """
     Loads the training data from a text file
     :return: (list)
@@ -22,10 +24,15 @@ def load_text(data_path=None):
     texts = []
 
     for file in files:
-        with open(path + file, "r", encoding="latin1") as f:
+        with open(path + file, "r", encoding="utf8") as f:
             for line in f:
-                if line.strip() != '':
-                    texts.append(line.strip())
+                line = line.strip()
+                if line != '':
+                    if max_length > 0:
+                        if len(line.split()) <= max_length:
+                            texts.append(line)
+                    else:
+                        texts.append(line)
 
     return texts
 
@@ -61,7 +68,7 @@ def mini_batches(corpus, size, n_batches, seed):
         yield [' '.join(str_utils.clean_and_split(corpus[index])) for index in s[mb * size: (mb + 1) * size]]
 
 
-def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, max_allowed_seq=200,
+def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, max_allowed_seq=-1,
           attention_size=128, layers=8, batch_size=32, num_batches=50, num_epochs=10,
           glove_embeddings_file=None, data_path=None, model_path=None,
           use_tf_idf=False, use_attention=False, verbose=False):
@@ -93,7 +100,7 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
         os.mkdir(log_dir)
 
     utils.log("Fetching corpus and transforming to frequency domain")
-    corpus = load_text(data_path=data_path)
+    corpus = load_text(data_path=data_path, max_length=max_allowed_seq)
 
     utils.log("Splitting the training and validation sets")
     train_corpus, cv_corpus = test_val_split(corpus=corpus, val_size=64)
@@ -101,8 +108,12 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
 
     utils.log("Fitting embedding lookup and transforming the training and cross-validation sets")
     hash_map, max_sequence_length = str_utils.get_top_tokens(corpus, n_top=num_tokens)
-    max_sequence_length = min(max_sequence_length, max_allowed_seq)
     utils.log(f"Max sequence length: {max_sequence_length}")
+
+    with open(log_dir + "/metadata.tsv", "w") as tsv:
+        for token, _ in sorted(hash_map.items(), key=lambda s: s[-1]):
+            tsv.write(token + "\n")
+        tsv.write("<unk>\n")
 
     # weights = None
     if glove_embeddings_file is not None:
@@ -164,6 +175,14 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
         summary_writer_dev = tf.summary.FileWriter(log_dir + '/validation', sess.graph)
         summary_writer_train.add_graph(graph=sess.graph)
         summary_writer_train.flush()
+
+        # add word labels to the projector
+        config_ = projector.ProjectorConfig()
+        embeddings_config = config_.embeddings.add()
+        embeddings = model.embeddings
+        embeddings_config.tensor_name = embeddings.name
+        embeddings_config.metadata_path = log_dir + "/metadata.tsv"
+        projector.visualize_embeddings(summary_writer_train, config_)
 
         model.assign_clip_norm(sess, 100000.0)
 
@@ -259,6 +278,7 @@ def main():
     parser.add_argument("--epochs", type=int, help="Number of epochs to run.", default=100000)
     parser.add_argument("--idf", action='store_true', help="Flag set to use TF-IDF values for N-token selection.")
     parser.add_argument("--attention", action='store_true', help="Set to use attention transformer model.")
+    parser.add_argument("--max_len", type=int, help="Maximum allowed sequence length", default=-1)
     parser.add_argument("--use_glove", action='store_true', help="Set to use the GloVe Common Crawl embeddings.")
     parser.add_argument("--glove_file", type=str, help="GloVe embeddings file.", default=None)
     parser.add_argument("--data_path", type=str, help="Path to the training data file(s).")
@@ -283,6 +303,7 @@ def main():
         train(
             model_folder=args.model_name,
             num_tokens=args.tokens,
+            max_allowed_seq=args.max_len,
             embedding_size=args.embedding,
             num_hidden=args.hidden,
             attention_size=args.attention_size,
