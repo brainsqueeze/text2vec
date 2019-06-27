@@ -70,8 +70,7 @@ def mini_batches(corpus, size, n_batches, seed):
 
 def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, max_allowed_seq=-1,
           attention_size=128, layers=8, batch_size=32, num_batches=50, num_epochs=10,
-          glove_embeddings_file=None, data_path=None, model_path=None,
-          use_tf_idf=False, use_attention=False, verbose=False):
+          data_path=None, model_path=None, use_attention=False, verbose=False):
     """
     Core training algorithm
     :param model_folder: name of the folder to create for the trained model (str)
@@ -86,11 +85,8 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
     :param batch_size: size of each mini-batch (int, optional)
     :param num_batches: number of mini-batches in each epoch (int, optional)
     :param num_epochs: number of training epochs (int, optional)
-    :param glove_embeddings_file: file location of the pre-trained GloVe embeddings,
-                                  if set will override some settings above (str, optional)
     :param data_path: valid path to the training data (str)
     :param model_path: valid path to where the model will be saved (str)
-    :param use_tf_idf: set to True to choose embedding tokens based on TF-IDF values rather than frequency alone (bool)
     :param use_attention: set to True to use the self-attention only model (bool)
     :param verbose: set to True to log learned weight distributions and validation set performance (bool, optional)
     """
@@ -114,20 +110,6 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
         for token, _ in sorted(hash_map.items(), key=lambda s: s[-1]):
             tsv.write(token + "\n")
         tsv.write("<unk>\n")
-
-    # weights = None
-    if glove_embeddings_file is not None:
-        raise NotImplementedError("GloVe embeddings not supported at this time")
-    #     utils.log("Using GloVe embeddings from Common Crawl")
-    #     (weights, unk, eos, bos), glove_vocab = utils.load_glove_vectors(lookup, glove_path=glove_embeddings_file)
-    #     glove_vocab.append(lookup.unknown)  # add the unknown sequence tag to the GloVe vocab
-    #     full_text = lookup.fit_transform(corpus=train_corpus, vocab_set=set(glove_vocab))
-    #     _, ordering = zip(*sorted([(word, lookup[word]) for word in glove_vocab], key=lambda z: z[1]))
-    #     ordering = np.array(ordering, np.int32)
-    #     weights = np.vstack([weights, unk])[ordering - 1]  # re-order the weights to match this particular vocabulary
-    #     weights = np.vstack([eos, bos, weights])
-    #     cv_x = lookup.transform(corpus=cv_corpus)
-    #     del(unk, eos, bos, ordering, glove_vocab)
 
     keep_probabilities = [0.9, 0.75, 1.0]
 
@@ -276,11 +258,8 @@ def main():
     parser.add_argument("--mb_size", type=int, help="Number of examples in each mini-batch.", default=32)
     parser.add_argument("--num_mb", type=int, help="Number of mini-batches per epoch.", default=40)
     parser.add_argument("--epochs", type=int, help="Number of epochs to run.", default=100000)
-    parser.add_argument("--idf", action='store_true', help="Flag set to use TF-IDF values for N-token selection.")
     parser.add_argument("--attention", action='store_true', help="Set to use attention transformer model.")
     parser.add_argument("--max_len", type=int, help="Maximum allowed sequence length", default=-1)
-    parser.add_argument("--use_glove", action='store_true', help="Set to use the GloVe Common Crawl embeddings.")
-    parser.add_argument("--glove_file", type=str, help="GloVe embeddings file.", default=None)
     parser.add_argument("--data_path", type=str, help="Path to the training data file(s).")
     parser.add_argument("--model_path", type=str, help="Path to place the saved model.")
     parser.add_argument("--verbose", action='store_true', help="Set to evaluate the CV set after each epoch.")
@@ -311,8 +290,6 @@ def main():
             batch_size=args.mb_size,
             num_batches=args.num_mb,
             num_epochs=args.epochs,
-            glove_embeddings_file=args.glove_file,
-            use_tf_idf=bool(args.idf),
             use_attention=bool(args.attention),
             data_path=args.data_path,
             model_path=args.model_path,

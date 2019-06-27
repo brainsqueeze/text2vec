@@ -58,10 +58,7 @@ before
 ## Training
 
 Both models are trained using Adam SGD with the learning-rate decay 
-program in [[2](https://arxiv.org/abs/1706.03762)]. The default 
-setting learns a word-embedding from scratch, however, it is possible 
-to use a frozen GloVe embedding [[3](https://nlp.stanford.edu/pubs/glove.pdf)] 
-instead.
+program in [[2](https://arxiv.org/abs/1706.03762)].
 
 Training the LSTM model can be initiated with
 ```bash
@@ -79,12 +76,6 @@ To view the output of training you can then run
 ```bash
 tensorboard --logdir text_embedding
 ```
-
-If a pre-trained GloVe embedding is present, it can be used to seed 
-the initial embedding matrix. To use the GloVe embeddings simply add these 
-two flags to the training script:
-
-```--use_glove --glove_file /absolute/path/to/glove/embeddings```
 
 The default behavior for the text dictionary class is to take the 
 top N tokens based strictly on term-frequencies in the corpus. It 
@@ -121,7 +112,7 @@ It should be noted that this loss function will ultimately yield a worse
 model than the same model trained on the usual log-loss when word-embeddings 
 are being learned. This is due to the loss function effectively teaching the
 embedding matrix to map words to a single point. It has not been tested whether 
-using pre-trained GloVe embeddings remedy this behavior.
+using pre-trained embeddings could help to remedy this behavior.
 
 ## Inference Demo
 
@@ -142,4 +133,3 @@ directory.  A demonstration webpage is included in [demo](demo) at
 
 1. D. Bahdanau, K. Cho, Y. Bengio [https://arxiv.org/abs/1409.0473](https://arxiv.org/abs/1409.0473)
 2. A. Vaswani, N. Shazeer, N. Parmar, J. Uszkoreit, L. Jones, A. N. Gomez, L. Kaiser, I. Polosukhin [https://arxiv.org/abs/1706.03762](https://arxiv.org/abs/1706.03762)
-3. J. Pennington, R. Socher, C. D. Manning [GloVe: Global Vectors for Word Representation](https://nlp.stanford.edu/pubs/glove.pdf)
