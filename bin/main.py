@@ -19,12 +19,12 @@ def load_text(data_path=None, max_length=-1):
     :return: (list)
     """
 
-    path = f"{data_path}/" if data_path else f"{root}/../text2vec/data/"
+    path = f"{data_path}/" if data_path is not None else f"{root}/../text2vec/data/"
     files = [f for f in os.listdir(path) if os.path.isfile(os.path.join(path, f))]
     texts = []
 
     for file in files:
-        with open(path + file, "r", encoding="utf8") as f:
+        with open(path + file, "r", encoding="utf8", errors="replace") as f:
             for line in f:
                 line = line.strip()
                 if line != '':
@@ -121,22 +121,20 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
             n_stacks=1
         )
     else:
-        raise NotImplementedError("Only the Transformer model is currently available")
-        # model = models.TextAttention(
-        #     max_sequence_len=lookup.max_sequence_length,
-        #     embedding_size=embedding_size,
-        #     vocab_size=vocab_size,
-        #     num_hidden=num_hidden,
-        #     attention_size=attention_size,
-        #     is_training=True
-        # )
+        # raise NotImplementedError("Only the Transformer model is currently available")
+        model = models.Sequential(
+            max_sequence_len=max_sequence_length,
+            embedding_size=embedding_size,
+            token_hash=hash_map,
+            num_hidden=num_hidden
+        )
 
     lstm_file_name = None
-    gpu_options = tf.GPUOptions(
+    gpu_options = tf.compat.v1.GPUOptions(
         per_process_gpu_memory_fraction=0.8,
         allow_growth=True
     )
-    sess_config = tf.ConfigProto(
+    sess_config = tf.compat.v1.ConfigProto(
         gpu_options=gpu_options,
         allow_soft_placement=True,
         log_device_placement=False
@@ -147,12 +145,12 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
     ]
     test_tokens = [' '.join(str_utils.clean_and_split(text)) for text in test_sentences]
 
-    with tf.Session(config=sess_config) as sess:
-        saver = tf.train.Saver()
-        sess.run([tf.global_variables_initializer(), tf.tables_initializer()])
+    with tf.compat.v1.Session(config=sess_config) as sess:
+        saver = tf.compat.v1.train.Saver()
+        sess.run([tf.compat.v1.global_variables_initializer(), tf.compat.v1.tables_initializer()])
 
-        summary_writer_train = tf.summary.FileWriter(log_dir + '/training', sess.graph)
-        summary_writer_dev = tf.summary.FileWriter(log_dir + '/validation', sess.graph)
+        summary_writer_train = tf.compat.v1.summary.FileWriter(log_dir + '/training', sess.graph)
+        summary_writer_dev = tf.compat.v1.summary.FileWriter(log_dir + '/validation', sess.graph)
         summary_writer_train.add_graph(graph=sess.graph)
         summary_writer_train.flush()
 
@@ -181,7 +179,7 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
                 model.assign_lr(sess, learning_rate)
                 feed_dict = {model.enc_tokens: x, model.keep_prob: keep_probabilities}
                 if i % (num_batches // 10) == 0:
-                    train_summary = tf.Summary()
+                    train_summary = tf.compat.v1.Summary()
                     operations = [model.loss, model.gradient_norm, model.lr, model.merged, model.train]
 
                     if summary_count == 10:

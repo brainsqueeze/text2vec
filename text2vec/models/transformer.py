@@ -5,42 +5,16 @@ from . import model_utils as tf_utils
 from functools import partial
 
 
-class Attention(object):
-
-    def __init__(self, size):
-        self.weight = tf.get_variable(
-            "weight",
-            dtype=tf.float32,
-            shape=[size, size],
-            initializer=tf.truncated_normal_initializer(-0.01, 0.01)
-        )
-        self.b_omega = tf.get_variable("b_omega", shape=[size], initializer=tf.zeros_initializer(), dtype=tf.float32)
-        self.u_omega = tf.get_variable("u_omega", shape=[size], initializer=tf.zeros_initializer(), dtype=tf.float32)
-
-    def __call__(self, encoded, decoded=None):
-        with tf.variable_scope('bahdanau-attention'):
-            if decoded is None:
-                score = tf.tanh(tf.tensordot(encoded, self.weight, axes=[-1, 0]) + self.b_omega)
-                score = tf.reduce_sum(self.u_omega * score, axis=-1)
-                alphas = tf.nn.softmax(score, name="attention-weights")
-                return tf.reduce_sum(encoded * tf.expand_dims(alphas, -1), 1, name="context-vector")
-            else:
-                score = tf.einsum("ijm,mn,ikn->ijk", encoded, self.weight, decoded)
-                alphas = tf.nn.softmax(score)
-                alphas = tf.reduce_sum(alphas, axis=1)
-                return tf.reduce_sum(decoded * tf.expand_dims(alphas, -1), axis=1)
-
-
 class Transformer(object):
 
     def __init__(self, max_sequence_len, token_hash, layers=8, n_stacks=1, embedding_size=50):
         assert isinstance(token_hash, dict)
 
-        self.enc_tokens = tf.placeholder(shape=[None], dtype=tf.string, name='encoder-token-input')
-        input_tokens = tf.string_split(self.enc_tokens, delimiter=' ')
+        self.enc_tokens = tf.compat.v1.placeholder(shape=[None], dtype=tf.string, name='encoder-token-input')
+        input_tokens = tf.string_split(self.enc_tokens, sep=' ')
         input_tokens = tf.RaggedTensor.from_sparse(input_tokens)
 
-        self.keep_prob = tf.placeholder_with_default([1.0, 1.0, 1.0], shape=(3,))
+        self.keep_prob = tf.compat.v1.placeholder_with_default([1.0, 1.0, 1.0], shape=(3,))
         self._input_keep_prob, self._hidden_keep_prob, self._dense_keep_prob = tf.unstack(self.keep_prob)
         self._max_seq_len = tf.constant(max_sequence_len, shape=(), dtype=tf.int32)
 
@@ -51,30 +25,30 @@ class Transformer(object):
         self.__count = 1  # keep track of re-used components for naming purposes
         self.__convolution_count = 1  # keep track of re-used convolution components
 
-        with tf.variable_scope('initialize'):
-            self.table = tf.contrib.lookup.HashTable(
-                tf.contrib.lookup.KeyValueTensorInitializer(list(token_hash.keys()), list(token_hash.values())),
+        with tf.name_scope('initialize'):
+            self.table = tf.lookup.StaticHashTable(
+                tf.lookup.KeyValueTensorInitializer(list(token_hash.keys()), list(token_hash.values())),
                 default_value=max(token_hash.values()) + 1
             )
 
             self.embeddings = tf.Variable(
-                tf.random_uniform([self._num_labels, embedding_size], -1.0, 1.0),
+                tf.random.uniform([self._num_labels, embedding_size], -1.0, 1.0),
                 name='embeddings',
                 dtype=tf.float32,
                 trainable=True
             )
             positional_encoder = self.__positional_encoding(max_sequence_len)
-            attention = Attention(size=embedding_size)
+            attention = tf_utils.Attention(size=embedding_size)
             h_dropout = partial(tf.nn.dropout, rate=1 - self._hidden_keep_prob)
 
         # Input pipeline
-        with tf.variable_scope('input'):
+        with tf.name_scope('input'):
             x, enc_mask, _ = self.form_tensors(tokens=input_tokens)
             x = x + positional_encoder * enc_mask
             encoded = tf.nn.dropout(x, rate=1 - self._input_keep_prob)
 
         # encoder pipeline
-        with tf.variable_scope('encoder'):
+        with tf.name_scope('encoder'):
             for _ in range(n_stacks):
                 encoded = h_dropout(self.__multi_head_attention(encoded, encoded, encoded)) + encoded
                 encoded = tf_utils.layer_norm_compute(encoded)
@@ -83,7 +57,7 @@ class Transformer(object):
             self.__context = attention(encoded * enc_mask)
 
         # Output pipeline
-        with tf.variable_scope('output'):
+        with tf.name_scope('output'):
             # make targets
             batch_size = input_tokens.nrows()
             eos = tf.fill([batch_size], value='</s>')  # post-pend EOS tag
@@ -101,7 +75,7 @@ class Transformer(object):
             decoded = tf.nn.dropout(x, rate=1 - self._input_keep_prob)
 
         # decoder pipeline
-        with tf.variable_scope('decoder'):
+        with tf.name_scope('decoder'):
             for _ in range(n_stacks):
                 decoded = h_dropout(self.__multi_head_attention(decoded, decoded, decoded, mask_future=True)) + decoded
                 decoded = tf_utils.layer_norm_compute(decoded)
@@ -114,12 +88,12 @@ class Transformer(object):
                 decoded = tf_utils.layer_norm_compute(decoded)
                 decoded = h_dropout(self.__projection(decoded)) + decoded
 
-        with tf.variable_scope('dense'):
-            bias = tf.get_variable(
-                "bias",
+        with tf.name_scope('dense'):
+            bias = tf.Variable(
+                tf.zeros([self._num_labels]),
+                name='bias',
                 dtype=tf.float32,
-                shape=[self._num_labels],
-                initializer=tf.zeros_initializer()
+                trainable=True
             )
             x_out = tf.tensordot(decoded, self.embeddings, axes=[2, 1]) + bias  # share embedding weights
             target = target.to_tensor(default_value=0)
@@ -127,26 +101,26 @@ class Transformer(object):
 
         self.loss = self.__cost(target_sequences=target, sequence_logits=x_out, smoothing=False)
 
-        with tf.variable_scope('optimizer'):
+        with tf.name_scope('optimizer'):
             self._lr = tf.Variable(0.0, trainable=False)
             self._clip_norm = tf.Variable(0.0, trainable=False)
-            t_vars = tf.trainable_variables()
+            t_vars = tf.compat.v1.trainable_variables()
             grads = tf.gradients(self.loss, t_vars)
-            opt = tf.train.AdamOptimizer(self._lr)
+            opt = tf.compat.v1.train.AdamOptimizer(self._lr)
 
             # compute the gradient norm - only for logging purposes - remove if greatly affecting performance
             self.gradient_norm = tf.sqrt(sum([tf.norm(t) ** 2 for t in grads]), name="gradient_norm")
-            self.train = opt.apply_gradients(zip(grads, t_vars), global_step=tf.train.get_or_create_global_step())
+            self.train = opt.apply_gradients(zip(grads, t_vars))
 
             # histograms
             for var in t_vars:
-                tf.summary.histogram(var.op.name, var)
-            self.merged = tf.summary.merge_all()
+                tf.compat.v1.summary.histogram(var.op.name, var)
+            self.merged = tf.compat.v1.summary.merge_all()
 
-            self._new_lr = tf.placeholder(tf.float32, shape=[], name="new_learning_rate")
-            self._lr_update = tf.assign(self._lr, self._new_lr)
-            self._new_clip_norm = tf.placeholder(tf.float32, shape=[], name="new_clip_norm")
-            self._clip_norm_update = tf.assign(self._clip_norm, self._new_clip_norm)
+            self._new_lr = tf.compat.v1.placeholder(tf.float32, shape=[], name="new_learning_rate")
+            self._lr_update = tf.compat.v1.assign(self._lr, self._new_lr)
+            self._new_clip_norm = tf.compat.v1.placeholder(tf.float32, shape=[], name="new_clip_norm")
+            self._clip_norm_update = tf.compat.v1.assign(self._clip_norm, self._new_clip_norm)
 
     def assign_lr(self, session, lr_value):
         session.run(self._lr_update, feed_dict={self._new_lr: lr_value})
@@ -181,7 +155,7 @@ class Transformer(object):
         :return: single batch encoder (tf.Tensor)
         """
 
-        with tf.variable_scope('positional-encoder'):
+        with tf.name_scope('positional-encoder'):
             positions = np.arange(max_seq_len).astype(np.float32)
             column_range = np.arange(self._dims).astype(np.float32)
             factor = np.power(1e5 ** (2 / self._dims), column_range)
@@ -196,22 +170,27 @@ class Transformer(object):
             return encoder
 
     def __multi_head_attention(self, queries, keys, values, mask_future=False):
-        with tf.variable_scope(f'multi-head-attention-{self.__count}'):
+        with tf.name_scope(f'multi-head-attention-{self.__count}'):
             dims = self._dims
             key_dim = dims // self._layers
             heads = []
 
-            kernel_init = tf.truncated_normal_initializer(-0.01, 0.01)
+            # kernel_init = tf.truncated_normal_initializer(-0.01, 0.01)
+            def kernel_init(shape): return tf.random.truncated_normal(shape, mean=-0.01, stddev=0.01)
 
             queries = tf.nn.dropout(queries, rate=1 - self._hidden_keep_prob)
             keys = tf.nn.dropout(keys, rate=1 - self._hidden_keep_prob)
             values = tf.nn.dropout(values, rate=1 - self._hidden_keep_prob)
 
             for i in range(self._layers):
-                with tf.variable_scope(f"head-{i}"):
-                    w_q = tf.get_variable("w-query", shape=[dims, key_dim], dtype=tf.float32, initializer=kernel_init)
-                    w_k = tf.get_variable("w-key", shape=[dims, key_dim], dtype=tf.float32, initializer=kernel_init)
-                    w_v = tf.get_variable("w-value", shape=[dims, key_dim], dtype=tf.float32, initializer=kernel_init)
+                with tf.name_scope(f"head-{i}"):
+                    # w_q = tf.get_variable("w-query", shape=[dims, key_dim], dtype=tf.float32, initializer=kernel_init)
+                    # w_k = tf.get_variable("w-key", shape=[dims, key_dim], dtype=tf.float32, initializer=kernel_init)
+                    # w_v = tf.get_variable("w-value", shape=[dims, key_dim], dtype=tf.float32, initializer=kernel_init)
+
+                    w_q = tf.Variable(kernel_init([dims, key_dim]), dtype=tf.float32, name="w-query", trainable=True)
+                    w_k = tf.Variable(kernel_init([dims, key_dim]), dtype=tf.float32, name="w-key", trainable=True)
+                    w_v = tf.Variable(kernel_init([dims, key_dim]), dtype=tf.float32, name="w-value", trainable=True)
 
                     head_queries = tf.tensordot(queries, w_q, axes=[-1, 0])
                     head_keys = tf.tensordot(keys, w_k, axes=[-1, 0])
@@ -231,12 +210,24 @@ class Transformer(object):
             return output
 
     def __position_wise_feed_forward(self, x):
-        with tf.variable_scope(f'position-wise-FFN-{self.__convolution_count}'):
+        with tf.name_scope(f'position-wise-FFN-{self.__convolution_count}'):
             dims = self._dims
             hidden_dim_size = 4 * dims
 
-            conv_filter_1 = tf.get_variable('conv-filter-inner', shape=[1, dims, hidden_dim_size], dtype=tf.float32)
-            conv_filter_2 = tf.get_variable('conv-filter-outer', shape=[1, hidden_dim_size, dims], dtype=tf.float32)
+            # conv_filter_1 = tf.get_variable('conv-filter-inner', shape=[1, dims, hidden_dim_size], dtype=tf.float32)
+            # conv_filter_2 = tf.get_variable('conv-filter-outer', shape=[1, hidden_dim_size, dims], dtype=tf.float32)
+            conv_filter_1 = tf.Variable(
+                tf.zeros([1, dims, hidden_dim_size]),
+                dtype=tf.float32,
+                name='conv-filter-inner',
+                trainable=True
+            )
+            conv_filter_2 = tf.Variable(
+                tf.zeros([1, hidden_dim_size, dims]),
+                dtype=tf.float32,
+                name='conv-filter-outer',
+                trainable=True
+            )
 
             inner_conv = tf.nn.conv1d(x, filters=conv_filter_1, stride=1, padding='SAME')
             inner_conv = tf.nn.relu(inner_conv)
@@ -245,7 +236,7 @@ class Transformer(object):
             return outer_conv
 
     def __projection(self, x, p_vector=None):
-        with tf.variable_scope('projection'):
+        with tf.name_scope('projection'):
             assert isinstance(x, tf.Tensor)
 
             context = p_vector if p_vector is not None else self.__context
@@ -263,7 +254,7 @@ class Transformer(object):
             return projection
 
     def __cost(self, target_sequences, sequence_logits, smoothing=False):
-        with tf.variable_scope('cost'):
+        with tf.name_scope('cost'):
             if smoothing:
                 smoothing = 0.1
                 targets = tf.one_hot(target_sequences, depth=self._num_labels, on_value=1.0, off_value=0.0, axis=-1)
