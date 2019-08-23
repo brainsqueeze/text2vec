@@ -1,8 +1,87 @@
+from .components.attention import BahdanauAttention
+from .components.attention import MultiHeadAttention
+from .components.feed_forward import PositionWiseFFN
+from .components import utils
+
 import tensorflow as tf
 import numpy as np
 
 from . import model_utils as tf_utils
 from functools import partial
+
+
+class TransformerEncoder(object):
+
+    def __init__(self, max_sequence_len, layers=8, n_stacks=1, embedding_size=50,
+                 input_keep_prob=1.0, hidden_keep_prob=1.0):
+        self.__stacks = n_stacks
+        self.max_sequence_length = max_sequence_len
+        self.h_keep_prob = hidden_keep_prob
+        self.dropout = partial(tf.nn.dropout, rate=1 - input_keep_prob)
+        self.h_dropout = partial(tf.nn.dropout, rate=1 - hidden_keep_prob)
+
+        self.positional_encode = utils.positional_encode(emb_dims=embedding_size, max_sequence_length=max_sequence_len)
+        self.MHA = [MultiHeadAttention(emb_dims=embedding_size, layers=layers) for _ in range(n_stacks)]
+        self.FFN = [PositionWiseFFN(emb_dims=embedding_size) for _ in range(n_stacks)]
+        self.attention = BahdanauAttention(size=embedding_size)
+
+    def __call__(self, x, mask, training=False):
+        assert isinstance(x, tf.Tensor)
+        assert isinstance(mask, tf.Tensor)
+
+        x = self.dropout(x + (self.positional_encode * mask))
+        for mha, ffn in zip(self.MHA, self.FFN):
+            x = self.h_dropout(mha(*([x] * 3), keep_prob=self.h_keep_prob)) + x
+            x = utils.layer_norm_compute(x)
+            x = self.h_dropout(ffn(x)) + x
+            x = utils.layer_norm_compute(x)
+
+        context = self.attention(x)
+        if training:
+            return x, context
+        return context
+
+
+class TransformerDecoder(object):
+
+    def __init__(self, max_sequence_len, num_labels, layers=8, n_stacks=1, embedding_size=50,
+                 input_keep_prob=1.0, hidden_keep_prob=1.0):
+        self.__stacks = n_stacks
+        self.max_sequence_length = max_sequence_len
+        self.h_keep_prob = hidden_keep_prob
+        self.dropout = partial(tf.nn.dropout, rate=1 - input_keep_prob)
+        self.h_dropout = partial(tf.nn.dropout, rate=1 - hidden_keep_prob)
+
+        self.positional_encode = utils.positional_encode(emb_dims=embedding_size, max_sequence_length=max_sequence_len)
+        self.MHA = [MultiHeadAttention(emb_dims=embedding_size, layers=layers) for _ in range(n_stacks)]
+        self.FFN = [PositionWiseFFN(emb_dims=embedding_size) for _ in range(n_stacks)]
+
+        self.bias = tf.Variable(
+            tf.zeros([num_labels]),
+            name='bias',
+            dtype=tf.float32,
+            trainable=True
+        )
+
+    def __call__(self, x_enc, enc_mask, x_dec, dec_mask, context, attention, embeddings):
+        assert isinstance(x_enc, tf.Tensor) and isinstance(enc_mask, tf.Tensor)
+        assert isinstance(x_dec, tf.Tensor) and isinstance(dec_mask, tf.Tensor)
+        assert isinstance(context, tf.Tensor) and isinstance(attention, BahdanauAttention)
+        assert isinstance(embeddings, tf.Variable)
+
+        x_dec = self.dropout(x_dec + (self.positional_encode * dec_mask))
+        for mha, ffn in zip(self.MHA, self.FFN):
+            x_dec = self.h_dropout(mha(*([x_dec] * 3), keep_prob=self.h_keep_prob, mask_future=True)) + x_dec
+            x_dec = utils.layer_norm_compute(x_dec)
+
+            cross_context = attention(encoded=x_enc * enc_mask, decoded=x_dec * dec_mask)
+            x_dec = self.h_dropout(utils.tensor_projection(x_dec, p_vector=cross_context)) + x_dec
+
+            x_dec = utils.layer_norm_compute(x_dec)
+            x_dec = self.h_dropout(ffn(x_dec)) + x_dec
+            x_dec = utils.layer_norm_compute(x_dec)
+            x_dec = self.h_dropout(utils.tensor_projection(x_dec, p_vector=context)) + x_dec
+        return tf.tensordot(x_dec, embeddings, axes=[2, 1]) + self.bias
 
 
 class Transformer(object):
