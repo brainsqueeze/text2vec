@@ -1,8 +1,9 @@
 from text2vec.preprocessing import utils as str_utils
-from text2vec import models
+from text2vec import models, training_tools
+from . import utils
+
 import tensorflow as tf
 import numpy as np
-from . import utils
 
 from tensorboard.plugins import projector
 
@@ -112,22 +113,28 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
     keep_probabilities = [0.9, 0.75, 1.0]
 
     utils.log("Building computation graph")
+    size = len(hash_map)
+    dims = embedding_size
     if use_attention:
-        model = models.Transformer(
-            max_sequence_len=max_sequence_length,
-            embedding_size=embedding_size,
-            token_hash=hash_map,
-            layers=layers,
-            n_stacks=1
-        )
+        # model = models.Transformer(
+        #     max_sequence_len=max_sequence_length,
+        #     embedding_size=embedding_size,
+        #     token_hash=hash_map,
+        #     layers=layers,
+        #     n_stacks=1
+        # )
+
+        token_feed = models.InputFeeder(token_hash=hash_map, emb_dims=dims)
+        encoder = models.TransformerEncoder(max_sequence_len=max_sequence_length, embedding_size=dims)
+        decoder = models.TransformerDecoder(max_sequence_len=max_sequence_length, num_labels=size, embedding_size=dims)
     else:
-        # raise NotImplementedError("Only the Transformer model is currently available")
-        model = models.Sequential(
-            max_sequence_len=max_sequence_length,
-            embedding_size=embedding_size,
-            token_hash=hash_map,
-            num_hidden=num_hidden
-        )
+        raise NotImplementedError("Only the Transformer model is currently available")
+        # model = models.Sequential(
+        #     max_sequence_len=max_sequence_length,
+        #     embedding_size=embedding_size,
+        #     token_hash=hash_map,
+        #     num_hidden=num_hidden
+        # )
 
     lstm_file_name = None
     gpu_options = tf.compat.v1.GPUOptions(
@@ -144,6 +151,21 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
         "The movie was terrible."
     ]
     test_tokens = [' '.join(str_utils.clean_and_split(text)) for text in test_sentences]
+
+    summary_writer_train = tf.compat.v2.summary.create_file_writer(log_dir + '/training')
+    summary_writer_dev = tf.compat.v2.summary.create_file_writer(log_dir + '/validation')
+    tf.compat.v2.summary.trace_on(graph=True, profiler=True)
+
+    # add word labels to the projector
+    config_ = projector.ProjectorConfig()
+    embeddings_config = config_.embeddings.add()
+    # embeddings = model.embeddings
+    embeddings = token_feed.embeddings
+    embeddings_config.tensor_name = embeddings.name
+    embeddings_config.metadata_path = log_dir + "/metadata.tsv"
+    projector.visualize_embeddings(summary_writer_train, config_)
+
+    return
 
     with tf.compat.v1.Session(config=sess_config) as sess:
         saver = tf.compat.v1.train.Saver()

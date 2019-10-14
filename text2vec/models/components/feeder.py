@@ -4,15 +4,16 @@ from .utils import ragged_tensor_process_mask
 
 class InputFeeder(object):
 
-    def __init__(self, token_hash, num_labels, emb_dims):
+    def __init__(self, token_hash, emb_dims):
         assert isinstance(token_hash, dict)
 
+        self.num_labels = len(token_hash)
         self.table = tf.lookup.StaticHashTable(
             tf.lookup.KeyValueTensorInitializer(list(token_hash.keys()), list(token_hash.values())),
             default_value=max(token_hash.values()) + 1
         )
         self.embeddings = tf.Variable(
-            tf.random.uniform([num_labels, emb_dims], -1.0, 1.0),
+            tf.random.uniform([self.num_labels, emb_dims], -1.0, 1.0),
             name='embeddings',
             dtype=tf.float32,
             trainable=True

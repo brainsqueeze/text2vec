@@ -18,7 +18,7 @@ test_sentences = [
 test_tokens = [' '.join(str_utils.clean_and_split(text)) for text in test_sentences]
 hash_map, max_sequence_length = str_utils.get_top_tokens(test_sentences, n_top=SIZE)
 
-token_feed = InputFeeder(token_hash=hash_map, num_labels=SIZE, emb_dims=DIMS)
+token_feed = InputFeeder(token_hash=hash_map, emb_dims=DIMS)
 encoder = TransformerEncoder(max_sequence_len=max_sequence_length, embedding_size=DIMS)
 decoder = TransformerDecoder(max_sequence_len=max_sequence_length, num_labels=SIZE, embedding_size=DIMS)
 

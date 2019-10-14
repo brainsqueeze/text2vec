@@ -78,3 +78,24 @@ def positional_encode(emb_dims, max_sequence_length):
         encoder[:, 1::2] = odd
         encoder = tf.convert_to_tensor(encoder, dtype=tf.float32)
         return encoder
+
+
+def sequence_cost(target_sequences, sequence_logits, num_labels, smoothing=False):
+    with tf.name_scope('cost'):
+        if smoothing:
+            smoothing = 0.1
+            targets = tf.one_hot(target_sequences, depth=num_labels, on_value=1.0, off_value=0.0, axis=-1)
+            loss = tf.losses.softmax_cross_entropy(
+                logits=sequence_logits,
+                onehot_labels=targets,
+                label_smoothing=smoothing,
+                reduction=tf.losses.Reduction.NONE
+            )
+        else:
+            loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
+                logits=sequence_logits,
+                labels=target_sequences
+            )
+
+        loss = tf.reduce_mean(loss)
+        return loss
