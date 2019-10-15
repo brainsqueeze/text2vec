@@ -1,7 +1,7 @@
+from .components.attention import BahdanauAttention
 import tensorflow as tf
 
 from functools import partial
-from . import model_utils as tf_utils
 
 
 class Sequential(object):
@@ -34,7 +34,7 @@ class Sequential(object):
                 dtype=tf.float32,
                 trainable=True
             )
-            attention = tf_utils.Attention(size=2 * self._num_hidden)
+            attention = BahdanauAttention(size=2 * self._num_hidden)
             h_dropout = partial(tf.nn.dropout, rate=1 - self._hidden_keep_prob)
             self.__add_layer = tf.keras.layers.Add()
             self.__dense_layer = tf.keras.layers.Dense(units=self._num_labels, dtype=tf.float32)

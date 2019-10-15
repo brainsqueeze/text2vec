@@ -6,7 +6,6 @@ from .components import utils
 import tensorflow as tf
 import numpy as np
 
-from . import model_utils as tf_utils
 from functools import partial
 
 
@@ -122,7 +121,7 @@ class Transformer(object):
                 trainable=True
             )
             positional_encoder = self.__positional_encoding(max_sequence_len)
-            attention = tf_utils.Attention(size=embedding_size)
+            attention = BahdanauAttention(size=embedding_size)
             h_dropout = partial(tf.nn.dropout, rate=1 - self._hidden_keep_prob)
 
         # Input pipeline
@@ -135,9 +134,9 @@ class Transformer(object):
         with tf.name_scope('encoder'):
             for _ in range(n_stacks):
                 encoded = h_dropout(self.__multi_head_attention(encoded, encoded, encoded)) + encoded
-                encoded = tf_utils.layer_norm_compute(encoded)
+                encoded = utils.layer_norm_compute(encoded)
                 encoded = h_dropout(self.__position_wise_feed_forward(encoded)) + encoded
-                encoded = tf_utils.layer_norm_compute(encoded)
+                encoded = utils.layer_norm_compute(encoded)
             self.__context = attention(encoded * enc_mask)
 
         # Output pipeline
@@ -162,14 +161,14 @@ class Transformer(object):
         with tf.name_scope('decoder'):
             for _ in range(n_stacks):
                 decoded = h_dropout(self.__multi_head_attention(decoded, decoded, decoded, mask_future=True)) + decoded
-                decoded = tf_utils.layer_norm_compute(decoded)
+                decoded = utils.layer_norm_compute(decoded)
 
                 cross_context = attention(encoded=encoded * enc_mask, decoded=decoded * dec_mask)
                 decoded = h_dropout(self.__projection(decoded, p_vector=cross_context)) + decoded
 
-                decoded = tf_utils.layer_norm_compute(decoded)
+                decoded = utils.layer_norm_compute(decoded)
                 decoded = h_dropout(self.__position_wise_feed_forward(decoded)) + decoded
-                decoded = tf_utils.layer_norm_compute(decoded)
+                decoded = utils.layer_norm_compute(decoded)
                 decoded = h_dropout(self.__projection(decoded)) + decoded
 
         with tf.name_scope('dense'):
@@ -280,7 +279,7 @@ class Transformer(object):
                     head_keys = tf.tensordot(keys, w_k, axes=[-1, 0])
                     head_values = tf.tensordot(values, w_v, axes=[-1, 0])
 
-                    head = tf_utils.scalar_dot_product_attention(
+                    head = utils.scalar_dot_product_attention(
                         query=head_queries,
                         key=head_keys,
                         value=head_values,
