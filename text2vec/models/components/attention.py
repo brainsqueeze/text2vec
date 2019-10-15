@@ -2,9 +2,10 @@ import tensorflow as tf
 from .utils import scalar_dot_product_attention
 
 
-class BahdanauAttention(object):
+class BahdanauAttention(tf.keras.layers.Layer):
 
     def __init__(self, size):
+        super(BahdanauAttention, self).__init__()
         self.W = tf.Variable(
             tf.random.truncated_normal([size, size], mean=-0.01, stddev=0.01),
             name='weight',
@@ -14,7 +15,8 @@ class BahdanauAttention(object):
         self.B = tf.Variable(tf.zeros(shape=[size]), name="B", dtype=tf.float32, trainable=True)
         self.U = tf.Variable(tf.zeros(shape=[size]), name="U", dtype=tf.float32, trainable=True)
 
-    def __call__(self, encoded, decoded=None):
+    def __call__(self, inputs, **kwargs):
+        encoded, decoded = inputs
         with tf.name_scope('bahdanau-attention'):
             if decoded is None:
                 score = tf.tanh(tf.tensordot(encoded, self.W, axes=[-1, 0]) + self.B)
@@ -28,9 +30,10 @@ class BahdanauAttention(object):
                 return tf.reduce_sum(decoded * tf.expand_dims(alphas, -1), axis=1)
 
 
-class SingleHeadAttention(object):
+class SingleHeadAttention(tf.keras.layers.Layer):
 
     def __init__(self, emb_dims, layers=8):
+        super(SingleHeadAttention, self).__init__()
         assert isinstance(layers, int) and layers > 0
 
         self.dims = emb_dims
@@ -43,7 +46,8 @@ class SingleHeadAttention(object):
     def __kernel(self):
         return tf.random.truncated_normal([self.dims, self.key_dims], mean=-0.01, stddev=0.01)
 
-    def __call__(self, queries, keys, values, keep_prob=1.0, mask_future=False):
+    def __call__(self, inputs, keep_prob=1.0, mask_future=False):
+        queries, keys, values = inputs
         drop_rate = 1 - keep_prob
 
         queries = tf.nn.dropout(queries, rate=drop_rate)
@@ -63,9 +67,10 @@ class SingleHeadAttention(object):
         return head
 
 
-class MultiHeadAttention(object):
+class MultiHeadAttention(tf.keras.layers.Layer):
 
     def __init__(self, emb_dims, layers=8):
+        super(MultiHeadAttention, self).__init__()
         self.layer_heads = []
         for i in range(layers):
             with tf.name_scope(f"head-{i}"):
@@ -73,10 +78,7 @@ class MultiHeadAttention(object):
 
         self.dense = tf.keras.layers.Dense(units=emb_dims, use_bias=False)
 
-    def __call__(self, queries, keys, values, keep_prob=1.0, mask_future=False):
-        heads = [
-            layer(queries=queries, keys=keys, values=values, keep_prob=keep_prob, mask_future=mask_future)
-            for layer in self.layer_heads
-        ]
+    def __call__(self, inputs, keep_prob=1.0, mask_future=False):
+        heads = [layer(inputs, keep_prob=keep_prob, mask_future=mask_future) for layer in self.layer_heads]
         total_head = tf.concat(heads, axis=-1)
         return self.dense(total_head)

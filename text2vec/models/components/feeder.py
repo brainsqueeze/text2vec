@@ -2,9 +2,10 @@ import tensorflow as tf
 from .utils import ragged_tensor_process_mask
 
 
-class InputFeeder(object):
+class InputFeeder(tf.keras.layers.Layer):
 
     def __init__(self, token_hash, emb_dims):
+        super(InputFeeder, self).__init__()
         assert isinstance(token_hash, dict)
 
         self.num_labels = len(token_hash)
@@ -23,10 +24,10 @@ class InputFeeder(object):
         assert isinstance(x, tf.RaggedTensor)
         return tf.ragged.map_flat_values(self.table.lookup, x)
 
-    def __call__(self, x, max_sequence_length):
-        assert isinstance(x, tf.RaggedTensor)
+    def __call__(self, inputs, max_sequence_length=0, **kwargs):
+        assert isinstance(inputs, tf.RaggedTensor)
         output, mask, time_steps = ragged_tensor_process_mask(
-            tokens=x,
+            tokens=inputs,
             lookup=self.table,
             embeddings=self.embeddings,
             max_sequence_length=max_sequence_length

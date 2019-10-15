@@ -35,7 +35,7 @@ def process_decoding_input(tokens, max_sequence_length, inputs_handler):
 
 
 @tf.function
-def train_step(sentences, inputs_handler, encoder, decoder, optimizer):
+def train_step(sentences, inputs_handler, encoder, decoder, optimizer=None):
     assert isinstance(inputs_handler, InputFeeder)
     assert isinstance(encoder, TransformerEncoder)
     assert isinstance(decoder, TransformerDecoder)
@@ -55,16 +55,16 @@ def train_step(sentences, inputs_handler, encoder, decoder, optimizer):
             inputs_handler=inputs_handler
         )
 
-        x_enc, context = encoder(x_enc, mask=enc_mask, training=True)
-        x_out = decoder(
-            x_enc=x_enc,
-            enc_mask=enc_mask,
-            x_dec=x_dec,
-            dec_mask=dec_mask,
-            context=context,
-            attention=encoder.attention,
-            embeddings=inputs_handler.embeddings
-        )
+        x_enc, context = encoder((x_enc, enc_mask), training=True)
+        x_out = decoder((
+            x_enc,
+            enc_mask,
+            x_dec,
+            dec_mask,
+            context,
+            encoder.attention,
+            inputs_handler.embeddings
+        ))
         x_out = x_out[:, :dec_time_steps]
         targets = targets.to_tensor(default_value=0)
         loss = sequence_cost(
@@ -74,6 +74,6 @@ def train_step(sentences, inputs_handler, encoder, decoder, optimizer):
             smoothing=False
         )
 
-    trainable_variables = tf.trainable_variables(encoder)
-    gradients = tape.gradient()
+    trainable_variables = inputs_handler.trainable_variables + encoder.trainable_variables + decoder.trainable_variables
+    gradients = tape.gradient(loss, trainable_variables)
     return x_out
