@@ -2,33 +2,6 @@ import tensorflow as tf
 import numpy as np
 
 
-def ragged_tensor_process_mask(tokens, lookup, embeddings, max_sequence_length):
-    assert isinstance(tokens, tf.RaggedTensor)
-    assert isinstance(lookup, tf.lookup.StaticHashTable)
-    assert isinstance(embeddings, tf.Variable)
-
-    epsilon = 1e-8
-    emb_dims = embeddings.shape[-1]
-
-    hashed = tf.ragged.map_flat_values(lookup.lookup, tokens)
-    hashed = hashed[:, :max_sequence_length]
-    batch_size = hashed.nrows()
-    seq_lengths = hashed.row_lengths()
-    time_steps = tf.cast(tf.reduce_max(seq_lengths), dtype=tf.int32)
-    padding = tf.zeros(shape=(batch_size, max_sequence_length - time_steps, emb_dims), dtype=tf.float32)
-
-    x = tf.ragged.map_flat_values(tf.nn.embedding_lookup, embeddings, hashed)
-    x = x.to_tensor()
-    # pad to full max sequence length, otherwise we get numerical inconsistencies with differing batch sizes
-    x = tf.concat([x, padding], axis=1)
-
-    # time-step masking
-    dec_mask = tf.sequence_mask(lengths=seq_lengths, maxlen=max_sequence_length)
-    dec_mask = tf.cast(dec_mask, dtype=tf.float32)
-    dec_mask = tf.tile(tf.expand_dims(dec_mask, axis=-1), multiples=[1, 1, emb_dims]) + epsilon
-    return x, dec_mask, time_steps
-
-
 def scalar_dot_product_attention(query, key, value, mask_future=False):
     with tf.name_scope('scalar-dot-attention'):
         numerator = tf.einsum('ijk,ilk->ijl', query, key)
