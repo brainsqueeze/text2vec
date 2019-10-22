@@ -1,17 +1,21 @@
 from text2vec.preprocessing import utils as str_utils
-from text2vec import models, training_tools
+from text2vec.models import InputFeeder
+from text2vec.models import TransformerEncoder, TransformerDecoder
+from text2vec.optimizer_tools import RampUpDecaySchedule
+from text2vec.training_tools import EncodingModel, train_step, get_context_embeddings, get_token_embeddings
 from . import utils
 
 import tensorflow as tf
 import numpy as np
 
-from tensorboard.plugins import projector
+# from tensorboard.plugins import projector
 
 import argparse
 import os
 
 root = os.path.dirname(os.path.abspath(__file__))
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
+tf.compat.v1.enable_eager_execution()
 
 
 def load_text(data_path=None, max_length=-1):
@@ -102,8 +106,8 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
     cv_tokens = [' '.join(str_utils.clean_and_split(text)) for text in cv_corpus]
 
     utils.log("Fitting embedding lookup and transforming the training and cross-validation sets")
-    hash_map, max_sequence_length = str_utils.get_top_tokens(corpus, n_top=num_tokens)
-    utils.log(f"Max sequence length: {max_sequence_length}")
+    hash_map, max_seq_len = str_utils.get_top_tokens(corpus, n_top=num_tokens)
+    utils.log(f"Max sequence length: {max_seq_len}")
 
     with open(log_dir + "/metadata.tsv", "w") as tsv:
         for token, _ in sorted(hash_map.items(), key=lambda s: s[-1]):
@@ -113,153 +117,104 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
     keep_probabilities = [0.9, 0.75, 1.0]
 
     utils.log("Building computation graph")
+    log_step = num_batches // 10
     size = len(hash_map)
     dims = embedding_size
-    if use_attention:
-        # model = models.Transformer(
-        #     max_sequence_len=max_sequence_length,
-        #     embedding_size=embedding_size,
-        #     token_hash=hash_map,
-        #     layers=layers,
-        #     n_stacks=1
-        # )
 
-        token_feed = models.InputFeeder(token_hash=hash_map, emb_dims=dims)
-        encoder = models.TransformerEncoder(max_sequence_len=max_sequence_length, embedding_size=dims)
-        decoder = models.TransformerDecoder(max_sequence_len=max_sequence_length, num_labels=size, embedding_size=dims)
-    else:
-        raise NotImplementedError("Only the Transformer model is currently available")
-        # model = models.Sequential(
-        #     max_sequence_len=max_sequence_length,
-        #     embedding_size=embedding_size,
-        #     token_hash=hash_map,
-        #     num_hidden=num_hidden
-        # )
+    model = EncodingModel(
+        feeder=InputFeeder(token_hash=hash_map, emb_dims=dims),
+        encoder=TransformerEncoder(max_sequence_len=max_seq_len, embedding_size=dims),
+        decoder=TransformerDecoder(max_sequence_len=max_seq_len, num_labels=size, embedding_size=dims)
+    )
+    # if use_attention:
+    #     model = EncodingModel(
+    #         feeder=InputFeeder(token_hash=hash_map, emb_dims=dims),
+    #         encoder=TransformerEncoder(max_sequence_len=max_seq_len, embedding_size=dims),
+    #         decoder=TransformerDecoder(max_sequence_len=max_seq_len, num_labels=len(hash_map), embedding_size=dims)
+    #     )
+    # else:
+    #     raise NotImplementedError("Only the Transformer model is currently available")
+    #     # model = models.Sequential(
+    #     #     max_sequence_len=max_seq_len,
+    #     #     embedding_size=embedding_size,
+    #     #     token_hash=hash_map,
+    #     #     num_hidden=num_hidden
+    #     # )
 
     lstm_file_name = None
-    gpu_options = tf.compat.v1.GPUOptions(
-        per_process_gpu_memory_fraction=0.8,
-        allow_growth=True
-    )
-    sess_config = tf.compat.v1.ConfigProto(
-        gpu_options=gpu_options,
-        allow_soft_placement=True,
-        log_device_placement=False
-    )
+    # gpu_options = tf.compat.v1.GPUOptions(
+    #     per_process_gpu_memory_fraction=0.8,
+    #     allow_growth=True
+    # )
+    # sess_config = tf.compat.v1.ConfigProto(
+    #     gpu_options=gpu_options,
+    #     allow_soft_placement=True,
+    #     log_device_placement=False
+    # )
+
+    if not tf.executing_eagerly():
+        for gpu in tf.config.experimental.list_physical_devices('GPU'):
+            tf.config.experimental.set_memory_growth(gpu, True)
+
     test_sentences = [
         "The movie was great!",
         "The movie was terrible."
     ]
     test_tokens = [' '.join(str_utils.clean_and_split(text)) for text in test_sentences]
 
-    summary_writer_train = tf.compat.v2.summary.create_file_writer(log_dir + '/training')
-    summary_writer_dev = tf.compat.v2.summary.create_file_writer(log_dir + '/validation')
-    tf.compat.v2.summary.trace_on(graph=True, profiler=True)
+    learning_rate = RampUpDecaySchedule(embedding_size=dims, warmup_steps=4000)
+    optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
 
-    # add word labels to the projector
-    config_ = projector.ProjectorConfig()
-    embeddings_config = config_.embeddings.add()
-    # embeddings = model.embeddings
-    embeddings = token_feed.embeddings
-    embeddings_config.tensor_name = embeddings.name
-    embeddings_config.metadata_path = log_dir + "/metadata.tsv"
-    projector.visualize_embeddings(summary_writer_train, config_)
+    summary_writer_train = tf.compat.v2.summary.create_file_writer(log_dir + "/training")
+    summary_writer_dev = tf.compat.v2.summary.create_file_writer(log_dir + "/validation")
+    checkpoint = tf.train.Checkpoint(model=model, optimizer=optimizer)
+    checkpoint_manager = tf.train.CheckpointManager(checkpoint, log_dir, max_to_keep=5)
 
-    return
+    # todo: get v2.0 API instructions
+    # # add word labels to the projector
+    # config_ = projector.ProjectorConfig()
+    # embeddings_config = config_.embeddings.add()
+    # embeddings = model.embed_layer.embeddings
+    # embeddings_config.tensor_name = embeddings.name
+    # embeddings_config.metadata_path = log_dir + "/metadata.tsv"
+    # projector.visualize_embeddings(summary_writer_train, config_)
 
-    with tf.compat.v1.Session(config=sess_config) as sess:
-        saver = tf.compat.v1.train.Saver()
-        sess.run([tf.compat.v1.global_variables_initializer(), tf.compat.v1.tables_initializer()])
+    train_loss = tf.keras.metrics.Mean('train-loss', dtype=tf.float32)
+    # val_loss = tf.keras.metrics.Mean('validation-loss', dtype=tf.float32)
 
-        summary_writer_train = tf.compat.v1.summary.FileWriter(log_dir + '/training', sess.graph)
-        summary_writer_dev = tf.compat.v1.summary.FileWriter(log_dir + '/validation', sess.graph)
-        summary_writer_train.add_graph(graph=sess.graph)
-        summary_writer_train.flush()
+    step = 1
+    for epoch in range(num_epochs):
+        print(f"\t Epoch: {epoch + 1}")
+        i = 1
+        train_loss.reset_states()
 
-        # add word labels to the projector
-        config_ = projector.ProjectorConfig()
-        embeddings_config = config_.embeddings.add()
-        embeddings = model.embeddings
-        embeddings_config.tensor_name = embeddings.name
-        embeddings_config.metadata_path = log_dir + "/metadata.tsv"
-        projector.visualize_embeddings(summary_writer_train, config_)
+        for x in mini_batches(train_corpus, size=batch_size, n_batches=num_batches, seed=epoch):
+            if len(x) == 0:
+                continue
 
-        model.assign_clip_norm(sess, 100000.0)
+            if i == log_step:
+                tf.compat.v2.summary.trace_on(graph=True, profiler=True)
+            loss, _ = train_step(x, model=model, optimizer=optimizer)
+            train_loss(loss)  # log the loss value to TensorBoard
 
-        step = 1
-        warm_up_steps = 4000
-        for epoch in range(num_epochs):
-            print(f"\t Epoch: {epoch + 1}")
-            i = 1
-            summary_count = 1
+            if i % log_step == 0:
+                print(f"\t\t iteration {i} - loss: {train_loss.result()}")
+                with summary_writer_train.as_default():
+                    tf.compat.v2.summary.scalar('train-loss', train_loss.result(), step=step)
+                    tf.compat.v2.summary.scalar('learning-rate', learning_rate(step=step), step=step)
 
-            for x in mini_batches(train_corpus, size=batch_size, n_batches=num_batches, seed=epoch):
-                if len(x) == 0:
-                    continue
+                    if i == log_step:
+                        tf.compat.v2.summary.trace_export('train-step-trace', step=step, profiler_outdir=log_dir)
 
-                learning_rate = embedding_size ** (-0.5) * min(step ** (-0.5), step * warm_up_steps ** (-1.5))
-                model.assign_lr(sess, learning_rate)
-                feed_dict = {model.enc_tokens: x, model.keep_prob: keep_probabilities}
-                if i % (num_batches // 10) == 0:
-                    train_summary = tf.compat.v1.Summary()
-                    operations = [model.loss, model.gradient_norm, model.lr, model.merged, model.train]
+        vectors = model.encode_layer(test_tokens, training=False)
+        angle = utils.compute_angles(vectors.numpy())[0, 1]
+        print(f"The 'angle' between `{'` and `'.join(test_sentences)}` is {angle} degrees")
 
-                    if summary_count == 10:
-                        run_metadata = tf.RunMetadata()
-                        loss_val, gradient, current_lr, summary, _ = sess.run(
-                            operations,
-                            feed_dict=feed_dict,
-                            options=tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE),
-                            run_metadata=run_metadata
-                        )
-                        summary_writer_train.add_run_metadata(run_metadata, tag=f'{step}')
-                    else:
-                        loss_val, gradient, current_lr, summary, _ = sess.run(operations, feed_dict=feed_dict)
-
-                    print(f"\t\t iteration {i} - loss: {loss_val}")
-                    train_summary.value.add(tag="cost", simple_value=loss_val)
-                    train_summary.value.add(tag="gradient_norm", simple_value=gradient)
-                    train_summary.value.add(tag="learning_rate", simple_value=current_lr)
-
-                    summary_writer_train.add_summary(train_summary, step)
-                    summary_writer_train.add_summary(summary, step)
-                    summary_writer_train.flush()
-                    summary_count += 1
-                else:
-                    sess.run(model.train, feed_dict=feed_dict)
-
-                i += 1
-                step += 1
-
-            if verbose:
-                dev_summary = tf.Summary()
-                test_case_summary = tf.Summary()
-
-                vectors = sess.run(model.embedding, feed_dict={model.enc_tokens: test_tokens})
-                angle = utils.compute_angles(vectors)[0, 1]
-                print(f"The 'angle' between `{'` and `'.join(test_sentences)}` is {angle} degrees")
-
-                test_case_summary.value.add(tag="similarity angle", simple_value=angle)
-                summary_writer_dev.add_summary(test_case_summary, step)
-                summary_writer_dev.flush()
-
-                cv_loss = sess.run(
-                    model.loss,
-                    feed_dict={model.enc_tokens: cv_tokens, model.keep_prob: keep_probabilities}
-                )
-                dev_summary.value.add(tag="cost", simple_value=cv_loss)
-                summary_writer_dev.add_summary(dev_summary, epoch * num_batches + i)
-                summary_writer_dev.flush()
-
-            lstm_file_name = saver.save(sess, log_dir + '/embedding_model', global_step=int((epoch + 1) * i))
-
-        tf.compat.v1.saved_model.simple_save(
-            session=sess,
-            export_dir=log_dir + "/saved",
-            inputs={'sequences': model.enc_tokens},
-            outputs={'embedding': model.embedding},
-            legacy_init_op=tf.tables_initializer()
-        )
+        cv_loss = model(cv_tokens)
+        with summary_writer_dev.as_default():
+            tf.compat.v2.summary.scalar('validation-loss', cv_loss.numpy(), step=step)
+            tf.compat.v2.summary.scalar('similarity angle', angle, step=step)
+        lstm_file_name = checkpoint_manager.save()
 
     return lstm_file_name
 

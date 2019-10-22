@@ -2,6 +2,8 @@ from text2vec.models import InputFeeder
 from text2vec.models.components.utils import sequence_cost
 import tensorflow as tf
 
+tf.enable_eager_execution()
+
 
 class EncodingModel(tf.keras.Model):
 
@@ -46,10 +48,16 @@ class EncodingModel(tf.keras.Model):
             smoothing=smoothing
         )
 
+    def forward(self, sentences):
+        tokens = tf.compat.v2.strings.split(sentences, sep=' ')
+        x_enc, enc_mask = self.process_inputs(tokens)
+        # x_enc, context = self.encode_layer((x_enc, enc_mask), training=True)
+        return x_enc, enc_mask
+
     def call(self, sentences, **kwargs):
         # turn sentences into ragged tensors of tokens
-        tokens = tf.strings.split(sentences, sep=' ')
-        tokens = tf.RaggedTensor.from_sparse(tokens)
+        tokens = tf.compat.v2.strings.split(sentences, sep=' ')
+        # tokens = tf.RaggedTensor.from_sparse(tokens)
 
         # turn incoming sentences into relevant tensor batches
         x_enc, enc_mask = self.process_inputs(tokens)
@@ -86,3 +94,17 @@ def train_step(sentences, model, optimizer):
 
     optimizer.apply_gradients(zip(gradients, model.trainable_variables))
     return loss, gradients
+
+
+@tf.function
+def get_token_embeddings(sentences, model):
+    assert isinstance(model, EncodingModel)
+    tokens = tf.compat.v2.strings.split(sentences, sep=' ')
+    return model.process_inputs(tokens)
+
+
+@tf.function
+def get_context_embeddings(sentences, model):
+    assert isinstance(model, EncodingModel)
+    tokens = tf.compat.v2.strings.split(sentences, sep=' ')
+    return model.encode_layer(model.process_inputs(tokens), training=False)
