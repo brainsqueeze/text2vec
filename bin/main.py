@@ -15,7 +15,7 @@ import os
 
 root = os.path.dirname(os.path.abspath(__file__))
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
-tf.compat.v1.enable_eager_execution()
+# tf.compat.v1.enable_eager_execution()
 
 
 def load_text(data_path=None, max_length=-1):
@@ -118,7 +118,7 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
 
     utils.log("Building computation graph")
     log_step = num_batches // 10
-    size = len(hash_map)
+    size = len(hash_map) + 1
     dims = embedding_size
 
     model = EncodingModel(
@@ -145,11 +145,6 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
     # gpu_options = tf.compat.v1.GPUOptions(
     #     per_process_gpu_memory_fraction=0.8,
     #     allow_growth=True
-    # )
-    # sess_config = tf.compat.v1.ConfigProto(
-    #     gpu_options=gpu_options,
-    #     allow_soft_placement=True,
-    #     log_device_placement=False
     # )
 
     if not tf.executing_eagerly():
@@ -201,12 +196,14 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
                 print(f"\t\t iteration {i} - loss: {train_loss.result()}")
                 with summary_writer_train.as_default():
                     tf.compat.v2.summary.scalar('train-loss', train_loss.result(), step=step)
-                    tf.compat.v2.summary.scalar('learning-rate', learning_rate(step=step), step=step)
+                    tf.compat.v2.summary.scalar('learning-rate', learning_rate.callback(step=step), step=step)
 
                     if i == log_step:
                         tf.compat.v2.summary.trace_export('train-step-trace', step=step, profiler_outdir=log_dir)
+            i += 1
 
-        vectors = model.encode_layer(test_tokens, training=False)
+        # vectors = model.encode_layer(test_tokens, training=False)
+        vectors = get_context_embeddings(test_tokens, model)
         angle = utils.compute_angles(vectors.numpy())[0, 1]
         print(f"The 'angle' between `{'` and `'.join(test_sentences)}` is {angle} degrees")
 

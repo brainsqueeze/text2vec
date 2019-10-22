@@ -7,7 +7,7 @@ class InputFeeder(tf.keras.layers.Layer):
         super(InputFeeder, self).__init__()
         assert isinstance(token_hash, dict)
 
-        self.num_labels = len(token_hash)
+        self.num_labels = len(token_hash) + 1
         self.table = tf.lookup.StaticHashTable(
             tf.lookup.KeyValueTensorInitializer(list(token_hash.keys()), list(token_hash.values())),
             default_value=max(token_hash.values()) + 1

@@ -1,4 +1,5 @@
 import tensorflow as tf
+import math
 
 
 class RampUpDecaySchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
@@ -21,3 +22,8 @@ class RampUpDecaySchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
             "decay_rate": self.decay_rate,
             "name": "ramp-up-decay-lr"
         }
+
+    def callback(self, step):
+        arg1 = math.sqrt(step)
+        arg2 = step * (self.warmup_steps ** -1.5)
+        return (1 / math.sqrt(self.dims)) * min(1 / arg1, arg2)

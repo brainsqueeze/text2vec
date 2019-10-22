@@ -48,16 +48,9 @@ class EncodingModel(tf.keras.Model):
             smoothing=smoothing
         )
 
-    def forward(self, sentences):
-        tokens = tf.compat.v2.strings.split(sentences, sep=' ')
-        x_enc, enc_mask = self.process_inputs(tokens)
-        # x_enc, context = self.encode_layer((x_enc, enc_mask), training=True)
-        return x_enc, enc_mask
-
     def call(self, sentences, **kwargs):
         # turn sentences into ragged tensors of tokens
         tokens = tf.compat.v2.strings.split(sentences, sep=' ')
-        # tokens = tf.RaggedTensor.from_sparse(tokens)
 
         # turn incoming sentences into relevant tensor batches
         x_enc, enc_mask = self.process_inputs(tokens)
