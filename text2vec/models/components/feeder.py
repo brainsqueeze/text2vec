@@ -48,5 +48,6 @@ class InputFeeder(tf.keras.layers.Layer):
         return x, dec_mask, time_steps
 
     def __call__(self, inputs, max_sequence_length=0, **kwargs):
-        assert isinstance(inputs, tf.RaggedTensor)
-        return self.ragged_tensor_process_mask(tokens=inputs, max_sequence_length=max_sequence_length)
+        with tf.name_scope("RaggedTensorProcessing"):
+            assert isinstance(inputs, tf.RaggedTensor)
+            return self.ragged_tensor_process_mask(tokens=inputs, max_sequence_length=max_sequence_length)

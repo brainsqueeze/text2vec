@@ -24,7 +24,7 @@ hash_map, max_sequence_length = text_utils.get_top_tokens(test_sentences, n_top=
 model = EncodingModel(
     feeder=InputFeeder(token_hash=hash_map, emb_dims=DIMS),
     encoder=TransformerEncoder(max_sequence_len=max_sequence_length, embedding_size=DIMS),
-    decoder=TransformerDecoder(max_sequence_len=max_sequence_length, num_labels=len(hash_map), embedding_size=DIMS)
+    decoder=TransformerDecoder(max_sequence_len=max_sequence_length, num_labels=len(hash_map) + 1, embedding_size=DIMS)
 )
 learning_rate = RampUpDecaySchedule(DIMS)
 optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)

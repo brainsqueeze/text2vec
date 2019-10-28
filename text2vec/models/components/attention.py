@@ -17,7 +17,7 @@ class BahdanauAttention(tf.keras.layers.Layer):
 
     def __call__(self, inputs, **kwargs):
         encoded, decoded = inputs
-        with tf.name_scope('bahdanau-attention'):
+        with tf.name_scope('BahdanauAttention'):
             if decoded is None:
                 score = tf.tanh(tf.tensordot(encoded, self.W, axes=[-1, 0]) + self.B)
                 score = tf.reduce_sum(self.U * score, axis=-1)
@@ -47,24 +47,25 @@ class SingleHeadAttention(tf.keras.layers.Layer):
         return tf.random.truncated_normal([self.dims, self.key_dims], mean=-0.01, stddev=0.01)
 
     def __call__(self, inputs, keep_prob=1.0, mask_future=False):
-        queries, keys, values = inputs
-        drop_rate = 1 - keep_prob
+        with tf.name_scope("SingleHeadAttention"):
+            queries, keys, values = inputs
+            drop_rate = 1 - keep_prob
 
-        queries = tf.nn.dropout(queries, rate=drop_rate)
-        keys = tf.nn.dropout(keys, rate=drop_rate)
-        values = tf.nn.dropout(values, rate=drop_rate)
+            queries = tf.nn.dropout(queries, rate=drop_rate)
+            keys = tf.nn.dropout(keys, rate=drop_rate)
+            values = tf.nn.dropout(values, rate=drop_rate)
 
-        head_queries = tf.tensordot(queries, self.WQ, axes=[-1, 0])
-        head_keys = tf.tensordot(keys, self.WK, axes=[-1, 0])
-        head_values = tf.tensordot(values, self.WV, axes=[-1, 0])
+            head_queries = tf.tensordot(queries, self.WQ, axes=[-1, 0])
+            head_keys = tf.tensordot(keys, self.WK, axes=[-1, 0])
+            head_values = tf.tensordot(values, self.WV, axes=[-1, 0])
 
-        head = scalar_dot_product_attention(
-            query=head_queries,
-            key=head_keys,
-            value=head_values,
-            mask_future=mask_future
-        )
-        return head
+            head = scalar_dot_product_attention(
+                query=head_queries,
+                key=head_keys,
+                value=head_values,
+                mask_future=mask_future
+            )
+            return head
 
 
 class MultiHeadAttention(tf.keras.layers.Layer):
@@ -79,6 +80,7 @@ class MultiHeadAttention(tf.keras.layers.Layer):
         self.dense = tf.keras.layers.Dense(units=emb_dims, use_bias=False)
 
     def __call__(self, inputs, keep_prob=1.0, mask_future=False):
-        heads = [layer(inputs, keep_prob=keep_prob, mask_future=mask_future) for layer in self.layer_heads]
-        total_head = tf.concat(heads, axis=-1)
-        return self.dense(total_head)
+        with tf.name_scope("MultiHeadAttention"):
+            heads = [layer(inputs, keep_prob=keep_prob, mask_future=mask_future) for layer in self.layer_heads]
+            total_head = tf.concat(heads, axis=-1)
+            return self.dense(total_head)

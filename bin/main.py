@@ -2,20 +2,19 @@ from text2vec.preprocessing import utils as str_utils
 from text2vec.models import InputFeeder
 from text2vec.models import TransformerEncoder, TransformerDecoder
 from text2vec.optimizer_tools import RampUpDecaySchedule
-from text2vec.training_tools import EncodingModel, train_step, get_context_embeddings, get_token_embeddings
+from text2vec.training_tools import EncodingModel
 from . import utils
 
 import tensorflow as tf
 import numpy as np
 
-# from tensorboard.plugins import projector
+from tensorboard.plugins import projector
 
 import argparse
 import os
 
 root = os.path.dirname(os.path.abspath(__file__))
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
-# tf.compat.v1.enable_eager_execution()
 
 
 def load_text(data_path=None, max_length=-1):
@@ -121,35 +120,51 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
     size = len(hash_map) + 1
     dims = embedding_size
 
-    model = EncodingModel(
-        feeder=InputFeeder(token_hash=hash_map, emb_dims=dims),
-        encoder=TransformerEncoder(max_sequence_len=max_seq_len, embedding_size=dims),
-        decoder=TransformerDecoder(max_sequence_len=max_seq_len, num_labels=size, embedding_size=dims)
-    )
-    # if use_attention:
-    #     model = EncodingModel(
-    #         feeder=InputFeeder(token_hash=hash_map, emb_dims=dims),
-    #         encoder=TransformerEncoder(max_sequence_len=max_seq_len, embedding_size=dims),
-    #         decoder=TransformerDecoder(max_sequence_len=max_seq_len, num_labels=len(hash_map), embedding_size=dims)
-    #     )
-    # else:
-    #     raise NotImplementedError("Only the Transformer model is currently available")
-    #     # model = models.Sequential(
-    #     #     max_sequence_len=max_seq_len,
-    #     #     embedding_size=embedding_size,
-    #     #     token_hash=hash_map,
-    #     #     num_hidden=num_hidden
-    #     # )
+    if use_attention:
+        model = EncodingModel(
+            feeder=InputFeeder(token_hash=hash_map, emb_dims=dims),
+            encoder=TransformerEncoder(max_sequence_len=max_seq_len, embedding_size=dims),
+            decoder=TransformerDecoder(max_sequence_len=max_seq_len, num_labels=size, embedding_size=dims)
+        )
+    else:
+        model = None
+        raise NotImplementedError("Only the Transformer model is currently available")
+        # model = models.Sequential(
+        #     max_sequence_len=max_seq_len,
+        #     embedding_size=embedding_size,
+        #     token_hash=hash_map,
+        #     num_hidden=num_hidden
+        # )
+
+    with tf.name_scope("Optimizer"):
+        learning_rate = RampUpDecaySchedule(embedding_size=dims, warmup_steps=4000)
+        optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+
+    @tf.function(input_signature=[tf.TensorSpec(shape=(None,), dtype=tf.string)])
+    def train_step(sentences):
+        assert isinstance(model, EncodingModel)
+        assert isinstance(optimizer, tf.keras.optimizers.Optimizer)
+
+        if tf.executing_eagerly():
+            with tf.GradientTape() as tape:
+                loss_val = model(sentences)
+            gradients = tape.gradient(loss_val, model.trainable_variables)
+        else:
+            loss_val = model(sentences)
+            gradients = tf.gradients(loss_val, model.trainable_variables)
+
+        optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+        return loss_val, gradients
+
+    @tf.function
+    def get_context_embeddings(sentences):
+        tokens = tf.strings.split(sentences, sep=' ')
+        return model.encode_layer(model.process_inputs(tokens), training=False)
 
     lstm_file_name = None
-    # gpu_options = tf.compat.v1.GPUOptions(
-    #     per_process_gpu_memory_fraction=0.8,
-    #     allow_growth=True
-    # )
-
-    if not tf.executing_eagerly():
-        for gpu in tf.config.experimental.list_physical_devices('GPU'):
-            tf.config.experimental.set_memory_growth(gpu, True)
+    tf.config.set_soft_device_placement(True)
+    for gpu in tf.config.experimental.list_physical_devices('GPU'):
+        tf.config.experimental.set_memory_growth(gpu, True)
 
     test_sentences = [
         "The movie was great!",
@@ -157,25 +172,23 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
     ]
     test_tokens = [' '.join(str_utils.clean_and_split(text)) for text in test_sentences]
 
-    learning_rate = RampUpDecaySchedule(embedding_size=dims, warmup_steps=4000)
-    optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
-
-    summary_writer_train = tf.compat.v2.summary.create_file_writer(log_dir + "/training")
-    summary_writer_dev = tf.compat.v2.summary.create_file_writer(log_dir + "/validation")
-    checkpoint = tf.train.Checkpoint(model=model, optimizer=optimizer)
+    summary_writer_train = tf.summary.create_file_writer(log_dir + "/training")
+    summary_writer_dev = tf.summary.create_file_writer(log_dir + "/validation")
+    checkpoint = tf.train.Checkpoint(EmbeddingModel=model, optimizer=optimizer)
     checkpoint_manager = tf.train.CheckpointManager(checkpoint, log_dir, max_to_keep=5)
 
-    # todo: get v2.0 API instructions
-    # # add word labels to the projector
-    # config_ = projector.ProjectorConfig()
-    # embeddings_config = config_.embeddings.add()
-    # embeddings = model.embed_layer.embeddings
-    # embeddings_config.tensor_name = embeddings.name
-    # embeddings_config.metadata_path = log_dir + "/metadata.tsv"
-    # projector.visualize_embeddings(summary_writer_train, config_)
+    # add word labels to the projector
+    config_ = projector.ProjectorConfig()
+    embeddings_config = config_.embeddings.add()
+
+    # embeddings_config.tensor_name = model.embed_layer.embeddings.name
+    checkpoint_manager.save()
+    reader = tf.train.load_checkpoint(log_dir)
+    embeddings_config.tensor_name = [key for key in reader.get_variable_to_shape_map() if "embedding" in key][0]
+    embeddings_config.metadata_path = log_dir + "/metadata.tsv"
+    projector.visualize_embeddings(logdir=log_dir, config=config_)
 
     train_loss = tf.keras.metrics.Mean('train-loss', dtype=tf.float32)
-    # val_loss = tf.keras.metrics.Mean('validation-loss', dtype=tf.float32)
 
     step = 1
     for epoch in range(num_epochs):
@@ -187,30 +200,35 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
             if len(x) == 0:
                 continue
 
-            if i == log_step:
-                tf.compat.v2.summary.trace_on(graph=True, profiler=True)
-            loss, _ = train_step(x, model=model, optimizer=optimizer)
+            if step == 1:
+                tf.summary.trace_on(graph=True, profiler=False)
+            loss, _ = train_step(x)
             train_loss(loss)  # log the loss value to TensorBoard
+            if step == 1:
+                with summary_writer_train.as_default():
+                    tf.summary.trace_export(name='graph', step=1, profiler_outdir=log_dir)
+                    tf.summary.trace_off()
+                    summary_writer_train.flush()
 
             if i % log_step == 0:
                 print(f"\t\t iteration {i} - loss: {train_loss.result()}")
                 with summary_writer_train.as_default():
-                    tf.compat.v2.summary.scalar('train-loss', train_loss.result(), step=step)
-                    tf.compat.v2.summary.scalar('learning-rate', learning_rate.callback(step=step), step=step)
-
-                    if i == log_step:
-                        tf.compat.v2.summary.trace_export('train-step-trace', step=step, profiler_outdir=log_dir)
+                    tf.summary.scalar(name='loss', data=train_loss.result(), step=step)
+                    tf.summary.scalar(name='learning-rate', data=learning_rate.callback(step=step), step=step)
+                    summary_writer_train.flush()
+                train_loss.reset_states()
             i += 1
+            step += 1
 
-        # vectors = model.encode_layer(test_tokens, training=False)
-        vectors = get_context_embeddings(test_tokens, model)
+        vectors = get_context_embeddings(test_tokens)
         angle = utils.compute_angles(vectors.numpy())[0, 1]
         print(f"The 'angle' between `{'` and `'.join(test_sentences)}` is {angle} degrees")
 
         cv_loss = model(cv_tokens)
         with summary_writer_dev.as_default():
-            tf.compat.v2.summary.scalar('validation-loss', cv_loss.numpy(), step=step)
-            tf.compat.v2.summary.scalar('similarity angle', angle, step=step)
+            tf.summary.scalar('loss', cv_loss.numpy(), step=step)
+            tf.summary.scalar('similarity angle', angle, step=step)
+            summary_writer_dev.flush()
         lstm_file_name = checkpoint_manager.save()
 
     return lstm_file_name

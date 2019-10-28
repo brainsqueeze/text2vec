@@ -3,7 +3,7 @@ import numpy as np
 
 
 def scalar_dot_product_attention(query, key, value, mask_future=False):
-    with tf.name_scope('scalar-dot-attention'):
+    with tf.name_scope('ScalarDotAttention'):
         numerator = tf.einsum('ijk,ilk->ijl', query, key)
         denominator = tf.sqrt(tf.cast(tf.shape(key)[1], dtype=tf.float32))
 
@@ -17,7 +17,7 @@ def scalar_dot_product_attention(query, key, value, mask_future=False):
 
 
 def layer_norm_compute(x, epsilon=1e-8, scale=1.0, bias=0):
-    with tf.name_scope('layer-norm'):
+    with tf.name_scope('LayerNorm'):
         mean = tf.reduce_mean(x, axis=-1, keepdims=True)
         variance = tf.reduce_mean(tf.square(x - mean), axis=-1, keepdims=True)
         norm_x = (x - mean) * tf.math.rsqrt(variance + epsilon)
@@ -27,7 +27,7 @@ def layer_norm_compute(x, epsilon=1e-8, scale=1.0, bias=0):
 def tensor_projection(x, p_vector):
     assert isinstance(x, tf.Tensor)
 
-    with tf.name_scope('projection'):
+    with tf.name_scope('Projection'):
         inner_product = tf.einsum("ijk,ik->ij", x, p_vector)
         time_steps = tf.shape(x)[1]
         p_vector_norm_squared = tf.norm(p_vector, axis=1) ** 2
@@ -38,7 +38,7 @@ def tensor_projection(x, p_vector):
 
 
 def positional_encode(emb_dims, max_sequence_length):
-    with tf.name_scope('positional-encoder'):
+    with tf.name_scope('PositionalEncoder'):
         positions = np.arange(max_sequence_length).astype(np.float32)
         column_range = np.arange(emb_dims).astype(np.float32)
         factor = np.power(1e5 ** (2 / emb_dims), column_range)
@@ -54,7 +54,7 @@ def positional_encode(emb_dims, max_sequence_length):
 
 
 def sequence_cost(target_sequences, sequence_logits, num_labels, smoothing=False):
-    with tf.name_scope('cost'):
+    with tf.name_scope('Cost'):
         if smoothing:
             smoothing = 0.1
             targets = tf.one_hot(target_sequences, depth=num_labels, on_value=1.0, off_value=0.0, axis=-1)

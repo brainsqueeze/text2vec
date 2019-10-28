@@ -163,7 +163,7 @@ class Transformer(object):
                 decoded = h_dropout(self.__multi_head_attention(decoded, decoded, decoded, mask_future=True)) + decoded
                 decoded = utils.layer_norm_compute(decoded)
 
-                cross_context = attention(encoded=encoded * enc_mask, decoded=decoded * dec_mask)
+                cross_context = attention((encoded * enc_mask, decoded * dec_mask))
                 decoded = h_dropout(self.__projection(decoded, p_vector=cross_context)) + decoded
 
                 decoded = utils.layer_norm_compute(decoded)
