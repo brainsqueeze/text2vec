@@ -2,7 +2,7 @@ from text2vec.preprocessing import utils as str_utils
 from text2vec.models import InputFeeder
 from text2vec.models import TransformerEncoder, TransformerDecoder
 from text2vec.optimizer_tools import RampUpDecaySchedule
-from text2vec.training_tools import EncodingModel
+from text2vec.training_tools import EncodingModel, sequence_cost
 from . import utils
 
 import tensorflow as tf
@@ -120,11 +120,22 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
     size = len(hash_map) + 1
     dims = embedding_size
 
+    # GPU config
+    for gpu in tf.config.experimental.list_physical_devices('GPU'):
+        tf.config.experimental.set_memory_growth(gpu, True)
+    tf.config.set_soft_device_placement(True)
+
+    params = dict(
+        max_sequence_len=max_seq_len,
+        embedding_size=dims,
+        input_keep_prob=0.9,
+        hidden_keep_prob=0.75
+    )
     if use_attention:
         model = EncodingModel(
             feeder=InputFeeder(token_hash=hash_map, emb_dims=dims),
-            encoder=TransformerEncoder(max_sequence_len=max_seq_len, embedding_size=dims),
-            decoder=TransformerDecoder(max_sequence_len=max_seq_len, num_labels=size, embedding_size=dims)
+            encoder=TransformerEncoder(**params),
+            decoder=TransformerDecoder(**params, num_labels=size)
         )
     else:
         model = None
@@ -140,19 +151,20 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
         learning_rate = RampUpDecaySchedule(embedding_size=dims, warmup_steps=4000)
         optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
 
+    def compute_loss(sentences):
+        y_hat, time_steps, targets = model(sentences, training=True)
+        loss_val = sequence_cost(
+            target_sequences=targets,
+            sequence_logits=y_hat[:, :time_steps],
+            num_labels=model.num_labels,
+            smoothing=False
+        )
+        return loss_val
+
     @tf.function(input_signature=[tf.TensorSpec(shape=(None,), dtype=tf.string)])
     def train_step(sentences):
-        assert isinstance(model, EncodingModel)
-        assert isinstance(optimizer, tf.keras.optimizers.Optimizer)
-
-        if tf.executing_eagerly():
-            with tf.GradientTape() as tape:
-                loss_val = model(sentences)
-            gradients = tape.gradient(loss_val, model.trainable_variables)
-        else:
-            loss_val = model(sentences)
-            gradients = tf.gradients(loss_val, model.trainable_variables)
-
+        loss_val = compute_loss(sentences)
+        gradients = tf.gradients(loss_val, model.trainable_variables)
         optimizer.apply_gradients(zip(gradients, model.trainable_variables))
         return loss_val, gradients
 
@@ -162,10 +174,6 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
         return model.encode_layer(model.process_inputs(tokens), training=False)
 
     lstm_file_name = None
-    tf.config.set_soft_device_placement(True)
-    for gpu in tf.config.experimental.list_physical_devices('GPU'):
-        tf.config.experimental.set_memory_growth(gpu, True)
-
     test_sentences = [
         "The movie was great!",
         "The movie was terrible."
@@ -202,21 +210,21 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
 
             if step == 1:
                 tf.summary.trace_on(graph=True, profiler=False)
+
             loss, _ = train_step(x)
             train_loss(loss)  # log the loss value to TensorBoard
-            if step == 1:
-                with summary_writer_train.as_default():
+            with summary_writer_train.as_default():
+                if step == 1:
                     tf.summary.trace_export(name='graph', step=1, profiler_outdir=log_dir)
                     tf.summary.trace_off()
                     summary_writer_train.flush()
 
-            if i % log_step == 0:
-                print(f"\t\t iteration {i} - loss: {train_loss.result()}")
-                with summary_writer_train.as_default():
+                if i % log_step == 0:
+                    print(f"\t\t iteration {i} - loss: {train_loss.result()}")
                     tf.summary.scalar(name='loss', data=train_loss.result(), step=step)
                     tf.summary.scalar(name='learning-rate', data=learning_rate.callback(step=step), step=step)
                     summary_writer_train.flush()
-                train_loss.reset_states()
+                    train_loss.reset_states()
             i += 1
             step += 1
 
@@ -224,7 +232,7 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
         angle = utils.compute_angles(vectors.numpy())[0, 1]
         print(f"The 'angle' between `{'` and `'.join(test_sentences)}` is {angle} degrees")
 
-        cv_loss = model(cv_tokens)
+        cv_loss = compute_loss(cv_tokens)
         with summary_writer_dev.as_default():
             tf.summary.scalar('loss', cv_loss.numpy(), step=step)
             tf.summary.scalar('similarity angle', angle, step=step)
