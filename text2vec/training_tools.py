@@ -1,5 +1,4 @@
-from text2vec.models import InputFeeder
-# from text2vec.models.components.utils import sequence_cost
+from text2vec.models import TextInput
 import tensorflow as tf
 
 
@@ -7,7 +6,7 @@ class EncodingModel(tf.keras.Model):
 
     def __init__(self, feeder, encoder, decoder):
         super(EncodingModel, self).__init__()
-        assert isinstance(feeder, InputFeeder)
+        assert isinstance(feeder, TextInput)
         assert isinstance(encoder, tf.keras.layers.Layer)
         assert isinstance(decoder, tf.keras.layers.Layer)
 

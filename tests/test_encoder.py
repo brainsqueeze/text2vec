@@ -1,4 +1,4 @@
-from text2vec.models import InputFeeder
+from text2vec.models import TextInput
 from text2vec.models import BahdanauAttention
 from text2vec.models import MultiHeadAttention
 from text2vec.models import PositionWiseFFN
@@ -20,7 +20,7 @@ test_sentences = [
 test_tokens = [' '.join(str_utils.clean_and_split(text)) for text in test_sentences]
 hash_map, max_sequence_length = str_utils.get_top_tokens(test_sentences, n_top=SIZE)
 
-token_feed = InputFeeder(token_hash=hash_map, num_labels=SIZE, emb_dims=DIMS)
+token_feed = TextInput(token_hash=hash_map, num_labels=SIZE, emb_dims=DIMS)
 multi_head_attention = MultiHeadAttention(emb_dims=DIMS)
 ffn = PositionWiseFFN(emb_dims=DIMS)
 attention = BahdanauAttention(size=DIMS)

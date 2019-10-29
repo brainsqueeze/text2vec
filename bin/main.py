@@ -1,6 +1,6 @@
 from text2vec.preprocessing import utils as str_utils
-from text2vec.models import InputFeeder
-from text2vec.models import TransformerEncoder, TransformerDecoder
+from text2vec.models import TextInput
+from text2vec.models import TransformerEncoder, TransformerDecoder, RecurrentEncoder, RecurrentDecoder
 from text2vec.optimizer_tools import RampUpDecaySchedule
 from text2vec.training_tools import EncodingModel, sequence_cost
 from . import utils
@@ -113,8 +113,6 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
             tsv.write(token + "\n")
         tsv.write("<unk>\n")
 
-    keep_probabilities = [0.9, 0.75, 1.0]
-
     utils.log("Building computation graph")
     log_step = num_batches // 10
     size = len(hash_map) + 1
@@ -133,19 +131,16 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
     )
     if use_attention:
         model = EncodingModel(
-            feeder=InputFeeder(token_hash=hash_map, emb_dims=dims),
+            feeder=TextInput(token_hash=hash_map, emb_dims=dims),
             encoder=TransformerEncoder(**params),
             decoder=TransformerDecoder(**params, num_labels=size)
         )
     else:
-        model = None
-        raise NotImplementedError("Only the Transformer model is currently available")
-        # model = models.Sequential(
-        #     max_sequence_len=max_seq_len,
-        #     embedding_size=embedding_size,
-        #     token_hash=hash_map,
-        #     num_hidden=num_hidden
-        # )
+        model = EncodingModel(
+            feeder=TextInput(token_hash=hash_map, emb_dims=dims),
+            encoder=RecurrentEncoder(**params, num_hidden=num_hidden),
+            decoder=RecurrentDecoder(**params, num_hidden=num_hidden, num_labels=size)
+        )
 
     with tf.name_scope("Optimizer"):
         learning_rate = RampUpDecaySchedule(embedding_size=dims, warmup_steps=4000)

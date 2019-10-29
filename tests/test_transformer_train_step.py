@@ -2,7 +2,7 @@
 from text2vec.training_tools import EncodingModel, train_step
 from text2vec.optimizer_tools import RampUpDecaySchedule
 
-from text2vec.models import InputFeeder
+from text2vec.models import TextInput
 from text2vec.models import TransformerEncoder
 from text2vec.models import TransformerDecoder
 
@@ -22,7 +22,7 @@ test_tokens = [' '.join(text_utils.clean_and_split(text)) for text in test_sente
 hash_map, max_sequence_length = text_utils.get_top_tokens(test_sentences, n_top=SIZE)
 
 model = EncodingModel(
-    feeder=InputFeeder(token_hash=hash_map, emb_dims=DIMS),
+    feeder=TextInput(token_hash=hash_map, emb_dims=DIMS),
     encoder=TransformerEncoder(max_sequence_len=max_sequence_length, embedding_size=DIMS),
     decoder=TransformerDecoder(max_sequence_len=max_sequence_length, num_labels=len(hash_map) + 1, embedding_size=DIMS)
 )

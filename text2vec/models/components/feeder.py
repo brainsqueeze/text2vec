@@ -1,10 +1,10 @@
 import tensorflow as tf
 
 
-class InputFeeder(tf.keras.layers.Layer):
+class TextInput(tf.keras.layers.Layer):
 
     def __init__(self, token_hash, emb_dims):
-        super(InputFeeder, self).__init__()
+        super(TextInput, self).__init__()
         assert isinstance(token_hash, dict)
 
         self.num_labels = len(token_hash) + 1
