@@ -66,6 +66,26 @@ class EncodingModel(tf.keras.Model):
 
         return x_out, dec_time_steps, targets.to_tensor(default_value=0)
 
+    @tf.function(input_signature=[tf.TensorSpec(shape=(None,), dtype=tf.string)])
+    def embed(self, inputs):
+        # turn sentences into ragged tensors of tokens
+        tokens = tf.strings.split(inputs, sep=' ')
+        return self.encode_layer(self.process_inputs(tokens), training=False)
+
+
+class FrozenModel(tf.keras.Model):
+
+    def __init__(self, embed, encoder):
+        super(FrozenModel, self).__init__()
+        self.embed_layer = embed
+        self.encode_layer = encoder
+
+    # @tf.function(input_signature=[tf.TensorSpec(shape=(None,), dtype=tf.string)])
+    def embed(self, inputs):
+        tokens = tf.strings.split(inputs, sep=' ')
+        x, mask, _ = self.embed_layer(tokens, max_sequence_length=self.encode_layer.max_sequence_length)
+        return self.encode_layer((x, mask), training=False)
+
 
 def sequence_cost(target_sequences, sequence_logits, num_labels, smoothing=False):
     with tf.name_scope('Cost'):

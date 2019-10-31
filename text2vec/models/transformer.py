@@ -11,7 +11,6 @@ class TransformerEncoder(tf.keras.layers.Layer):
     def __init__(self, max_sequence_len, layers=8, n_stacks=1, embedding_size=50,
                  input_keep_prob=1.0, hidden_keep_prob=1.0):
         super(TransformerEncoder, self).__init__()
-        self.__stacks = n_stacks
         self.max_sequence_length = max_sequence_len
         dims = embedding_size
         keep_prob = hidden_keep_prob
@@ -50,7 +49,6 @@ class TransformerDecoder(tf.keras.layers.Layer):
     def __init__(self, max_sequence_len, num_labels, layers=8, n_stacks=1, embedding_size=50,
                  input_keep_prob=1.0, hidden_keep_prob=1.0):
         super(TransformerDecoder, self).__init__()
-        self.__stacks = n_stacks
         self.max_sequence_length = max_sequence_len
         dims = embedding_size
         keep_prob = hidden_keep_prob

@@ -36,24 +36,19 @@ class SingleHeadAttention(tf.keras.layers.Layer):
         super(SingleHeadAttention, self).__init__()
         assert isinstance(layers, int) and layers > 0
 
-        self.dims = emb_dims
-        self.key_dims = emb_dims // layers
+        dims = emb_dims
+        key_dims = emb_dims // layers
+        kernel = tf.random.truncated_normal([dims, key_dims], mean=-0.01, stddev=0.01)
+
+        self.WQ = tf.Variable(kernel, name="WQ", dtype=tf.float32, trainable=True)
+        self.WK = tf.Variable(kernel, name="WK", dtype=tf.float32, trainable=True)
+        self.WV = tf.Variable(kernel, name="WV", dtype=tf.float32, trainable=True)
         self.dropout = tf.keras.layers.Dropout(1 - keep_prob)
-
-        self.WQ = tf.Variable(self.__kernel(), name="WQ", dtype=tf.float32, trainable=True)
-        self.WK = tf.Variable(self.__kernel(), name="WK", dtype=tf.float32, trainable=True)
-        self.WV = tf.Variable(self.__kernel(), name="WV", dtype=tf.float32, trainable=True)
-
-    def __kernel(self):
-        return tf.random.truncated_normal([self.dims, self.key_dims], mean=-0.01, stddev=0.01)
 
     def __call__(self, inputs, mask_future=False, training=False):
         with tf.name_scope("SingleHeadAttention"):
             queries, keys, values = inputs
 
-            # queries = tf.nn.dropout(queries, rate=drop_rate)
-            # keys = tf.nn.dropout(keys, rate=drop_rate)
-            # values = tf.nn.dropout(values, rate=drop_rate)
             queries = self.dropout(queries, training=training)
             keys = self.dropout(keys, training=training)
             values = self.dropout(values, training=training)

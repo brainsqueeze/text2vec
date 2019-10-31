@@ -2,7 +2,7 @@ from text2vec.preprocessing import utils as str_utils
 from text2vec.models import TextInput
 from text2vec.models import TransformerEncoder, TransformerDecoder, RecurrentEncoder, RecurrentDecoder
 from text2vec.optimizer_tools import RampUpDecaySchedule
-from text2vec.training_tools import EncodingModel, sequence_cost
+from text2vec.training_tools import EncodingModel, FrozenModel, sequence_cost, Test
 from . import utils
 
 import tensorflow as tf
@@ -163,11 +163,6 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
         optimizer.apply_gradients(zip(gradients, model.trainable_variables))
         return loss_val, gradients
 
-    @tf.function
-    def get_context_embeddings(sentences):
-        tokens = tf.strings.split(sentences, sep=' ')
-        return model.encode_layer(model.process_inputs(tokens), training=False)
-
     lstm_file_name = None
     test_sentences = [
         "The movie was great!",
@@ -223,7 +218,7 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
             i += 1
             step += 1
 
-        vectors = get_context_embeddings(test_tokens)
+        vectors = model.embed(test_tokens)
         angle = utils.compute_angles(vectors.numpy())[0, 1]
         print(f"The 'angle' between `{'` and `'.join(test_sentences)}` is {angle} degrees")
 
@@ -234,6 +229,10 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
             summary_writer_dev.flush()
         lstm_file_name = checkpoint_manager.save()
 
+    tf.saved_model.save(FrozenModel(embed=model.embed_layer, encoder=model.encode_layer), f"{log_dir}/frozen/1/")
+
+    test_model = tf.saved_model.load(f"{log_dir}/frozen/1/")
+    print(test_model(cv_tokens).numpy())
     return lstm_file_name
 
 
