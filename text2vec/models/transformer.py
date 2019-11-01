@@ -17,6 +17,7 @@ class TransformerEncoder(tf.keras.layers.Layer):
 
         self.dropout = tf.keras.layers.Dropout(1 - input_keep_prob, name="InputDropout")
         self.h_dropout = tf.keras.layers.Dropout(1 - hidden_keep_prob, name="HiddenStateDropout")
+        self.layer_norm = utils.LayerNorm()
 
         self.positional_encode = utils.positional_encode(emb_dims=dims, max_sequence_length=max_sequence_len)
         self.MHA = [MultiHeadAttention(emb_dims=dims, layers=layers, keep_prob=keep_prob) for _ in range(n_stacks)]
@@ -25,18 +26,16 @@ class TransformerEncoder(tf.keras.layers.Layer):
 
     def __call__(self, inputs, training=False, **kwargs):
         x, mask = inputs
-        assert isinstance(x, tf.Tensor)
-        assert isinstance(mask, tf.Tensor)
-
         x = self.dropout(x + (self.positional_encode * mask), training=training)
+
         for mha, ffn in zip(self.MHA, self.FFN):
             assert isinstance(mha, MultiHeadAttention)
             assert isinstance(ffn, PositionWiseFFN)
 
             x = self.h_dropout(mha([x] * 3, training=training), training=training) + x
-            x = utils.layer_norm_compute(x)
+            x = self.layer_norm(x)
             x = self.h_dropout(ffn(x), training=training) + x
-            x = utils.layer_norm_compute(x)
+            x = self.layer_norm(x)
 
         context = self.attention((x, None))
         if training:
@@ -55,6 +54,8 @@ class TransformerDecoder(tf.keras.layers.Layer):
 
         self.dropout = tf.keras.layers.Dropout(1 - input_keep_prob, name="InputDropout")
         self.h_dropout = tf.keras.layers.Dropout(1 - hidden_keep_prob, name="HiddenStateDropout")
+        self.layer_norm = utils.LayerNorm()
+        self.projection = utils.TensorProjection()
 
         self.positional_encode = utils.positional_encode(emb_dims=dims, max_sequence_length=max_sequence_len)
         self.MHA = [MultiHeadAttention(emb_dims=dims, layers=layers, keep_prob=keep_prob) for _ in range(n_stacks)]
@@ -75,13 +76,13 @@ class TransformerDecoder(tf.keras.layers.Layer):
             assert isinstance(ffn, PositionWiseFFN)
 
             x_dec = self.h_dropout(mha([x_dec] * 3, mask_future=True, training=training), training=training) + x_dec
-            x_dec = utils.layer_norm_compute(x_dec)
+            x_dec = self.layer_norm(x_dec)
 
             cross_context = attention((x_enc * enc_mask, x_dec * dec_mask))
-            x_dec = self.h_dropout(utils.tensor_projection(x_dec, p_vector=cross_context), training=training) + x_dec
+            x_dec = self.h_dropout(self.projection(x_dec, projection_vector=cross_context), training=training) + x_dec
 
-            x_dec = utils.layer_norm_compute(x_dec)
+            x_dec = self.layer_norm(x_dec)
             x_dec = self.h_dropout(ffn(x_dec), training=training) + x_dec
-            x_dec = utils.layer_norm_compute(x_dec)
-            x_dec = self.h_dropout(utils.tensor_projection(x_dec, p_vector=context), training=training) + x_dec
+            x_dec = self.layer_norm(x_dec)
+            x_dec = self.h_dropout(self.projection(x_dec, projection_vector=context), training=training) + x_dec
         return tf.tensordot(x_dec, embeddings, axes=[2, 1]) + self.bias

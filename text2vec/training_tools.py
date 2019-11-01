@@ -73,7 +73,7 @@ class EncodingModel(tf.keras.Model):
         return self.encode_layer(self.process_inputs(tokens), training=False)
 
 
-class FrozenModel(tf.keras.Model):
+class FrozenModel(tf.Module):
 
     def __init__(self, embed, encoder):
         super(FrozenModel, self).__init__()
@@ -81,8 +81,8 @@ class FrozenModel(tf.keras.Model):
         self.encode_layer = encoder
 
     # @tf.function(input_signature=[tf.TensorSpec(shape=(None,), dtype=tf.string)])
-    def embed(self, inputs):
-        tokens = tf.strings.split(inputs, sep=' ')
+    def embed(self, sentences):
+        tokens = tf.strings.split(sentences, sep=' ')
         x, mask, _ = self.embed_layer(tokens, max_sequence_length=self.encode_layer.max_sequence_length)
         return self.encode_layer((x, mask), training=False)
 

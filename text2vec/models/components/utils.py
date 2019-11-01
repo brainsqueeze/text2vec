@@ -2,39 +2,55 @@ import tensorflow as tf
 import numpy as np
 
 
-def scalar_dot_product_attention(query, key, value, mask_future=False):
-    with tf.name_scope('ScalarDotAttention'):
-        numerator = tf.einsum('ijk,ilk->ijl', query, key)
-        denominator = tf.sqrt(tf.cast(tf.shape(key)[1], dtype=tf.float32))
+class ScalarDotAttention(tf.keras.layers.Layer):
 
-        if mask_future:
-            upper = (1 + 1e9) * tf.linalg.band_part(tf.ones_like(numerator), num_lower=0, num_upper=-1)
-            mask = 1 - upper
-            numerator *= mask
+    def __init__(self):
+        super(ScalarDotAttention, self).__init__(name="ScalarDotAttention")
 
-        x = tf.nn.softmax(numerator / denominator)
-        return tf.einsum('ijk,ikl->ijl', x, value)
+    def __call__(self, query, key, value, mask_future=False):
+        with tf.name_scope("ScalarDotAttention"):
+            numerator = tf.einsum('ijk,ilk->ijl', query, key)
+            denominator = tf.sqrt(tf.cast(tf.shape(key)[1], dtype=tf.float32))
 
+            if mask_future:
+                upper = (1 + 1e9) * tf.linalg.band_part(tf.ones_like(numerator), num_lower=0, num_upper=-1)
+                mask = 1 - upper
+                numerator *= mask
 
-def layer_norm_compute(x, epsilon=1e-8, scale=1.0, bias=0):
-    with tf.name_scope('LayerNorm'):
-        mean = tf.reduce_mean(x, axis=-1, keepdims=True)
-        variance = tf.reduce_mean(tf.square(x - mean), axis=-1, keepdims=True)
-        norm_x = (x - mean) * tf.math.rsqrt(variance + epsilon)
-        return norm_x * scale + bias
+            x = tf.nn.softmax(numerator / denominator)
+            return tf.einsum('ijk,ikl->ijl', x, value)
 
 
-def tensor_projection(x, p_vector):
-    assert isinstance(x, tf.Tensor)
+class LayerNorm(tf.keras.layers.Layer):
 
-    with tf.name_scope('Projection'):
-        inner_product = tf.einsum("ijk,ik->ij", x, p_vector)
-        time_steps = tf.shape(x)[1]
-        p_vector_norm_squared = tf.norm(p_vector, axis=1) ** 2
-        p_vector_norm_squared = tf.tile(tf.expand_dims(p_vector_norm_squared, -1), [1, time_steps])
+    def __init__(self, epsilon=1e-8, scale=1.0, bias=0):
+        super(LayerNorm, self).__init__(name="LayerNorm")
+        self.epsilon = tf.constant(epsilon, dtype=tf.float32)
+        self.scale = tf.constant(scale, dtype=tf.float32)
+        self.bias = tf.constant(bias, dtype=tf.float32)
 
-        alpha = tf.divide(inner_product, p_vector_norm_squared)
-        return tf.einsum("ij,ik->ijk", alpha, p_vector)
+    def __call__(self, x):
+        with tf.name_scope("LayerNorm"):
+            mean = tf.reduce_mean(x, axis=-1, keepdims=True)
+            variance = tf.reduce_mean(tf.square(x - mean), axis=-1, keepdims=True)
+            norm = (x - mean) * tf.math.rsqrt(variance + self.epsilon)
+            return norm * self.scale + self.bias
+
+
+class TensorProjection(tf.keras.layers.Layer):
+
+    def __init__(self):
+        super(TensorProjection, self).__init__(name="TensorProjection")
+
+    def __call__(self, x, projection_vector):
+        with tf.name_scope("TensorProjection"):
+            inner_product = tf.einsum("ijk,ik->ij", x, projection_vector)
+            time_steps = tf.shape(x)[1]
+            p_vector_norm_squared = tf.norm(projection_vector, axis=1) ** 2
+            p_vector_norm_squared = tf.tile(tf.expand_dims(p_vector_norm_squared, -1), [1, time_steps])
+
+            alpha = tf.divide(inner_product, p_vector_norm_squared)
+            return tf.einsum("ij,ik->ijk", alpha, projection_vector)
 
 
 def positional_encode(emb_dims, max_sequence_length):

@@ -2,7 +2,7 @@ from text2vec.preprocessing import utils as str_utils
 from text2vec.models import TextInput
 from text2vec.models import TransformerEncoder, TransformerDecoder, RecurrentEncoder, RecurrentDecoder
 from text2vec.optimizer_tools import RampUpDecaySchedule
-from text2vec.training_tools import EncodingModel, FrozenModel, sequence_cost, Test
+from text2vec.training_tools import EncodingModel, FrozenModel, sequence_cost
 from . import utils
 
 import tensorflow as tf
@@ -229,7 +229,9 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
             summary_writer_dev.flush()
         lstm_file_name = checkpoint_manager.save()
 
-    tf.saved_model.save(FrozenModel(embed=model.embed_layer, encoder=model.encode_layer), f"{log_dir}/frozen/1/")
+    frozen_model = FrozenModel(embed=model.embed_layer, encoder=model.encode_layer)
+    # frozen_model(cv_tokens)
+    tf.saved_model.save(frozen_model, f"{log_dir}/frozen/1/")
 
     test_model = tf.saved_model.load(f"{log_dir}/frozen/1/")
     print(test_model(cv_tokens).numpy())
