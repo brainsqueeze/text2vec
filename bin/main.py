@@ -2,7 +2,7 @@ from text2vec.preprocessing import utils as str_utils
 from text2vec.models import TextInput
 from text2vec.models import TransformerEncoder, TransformerDecoder, RecurrentEncoder, RecurrentDecoder
 from text2vec.optimizer_tools import RampUpDecaySchedule
-from text2vec.training_tools import EncodingModel, FrozenModel, sequence_cost
+from text2vec.training_tools import EncodingModel, sequence_cost
 from . import utils
 
 import tensorflow as tf
@@ -229,30 +229,14 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
             summary_writer_dev.flush()
         lstm_file_name = checkpoint_manager.save()
 
-    frozen_model = FrozenModel(embed=model.embed_layer, encoder=model.encode_layer)
-    # frozen_model(cv_tokens)
-    tf.saved_model.save(frozen_model, f"{log_dir}/frozen/1/")
+    utils.log("Saving a frozen model")
+    tf.saved_model.save(model, f"{log_dir}/frozen/1")
 
-    test_model = tf.saved_model.load(f"{log_dir}/frozen/1/")
-
-    class Exporter(tf.Module):
-
-        def __init__(self):
-            super(Exporter, self).__init__()
-
-        # @tf.function(input_signature=[tf.TensorSpec(shape=[None, None], dtype=tf.string)])
-        # @tf.function(input_signature=[tf.RaggedTensorSpec(ragged_rank=1, dtype=tf.string)])
-        @tf.function(input_signature=[tf.TensorSpec(shape=[None], dtype=tf.string)])
-        def forward(self, tokens):
-            # return model.encode_layer(model.process_inputs(tokens), training=False)
-            tokens = model.tokenizer(tokens)
-            x, mask, _ = model.embed_layer(tokens, max_sequence_length=model.encode_layer.max_sequence_length)
-            return x
-
-    to_export = Exporter()
-    tf.saved_model.save(to_export, f'{log_dir}/export/1')
-
-    print(test_model(cv_tokens).numpy())
+    utils.log("Reloading frozen model and comparing output to in-memory model")
+    test = tf.saved_model.load(f"{log_dir}/frozen/1")
+    test_model = test.signatures["serving_default"]
+    test_output = test_model(tf.constant(cv_tokens))["output_0"].numpy()
+    utils.log(f"Outputs on CV set are approximately the same?: {np.allclose(test_output, model(cv_tokens).numpy())}")
     return lstm_file_name
 
 

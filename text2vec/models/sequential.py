@@ -17,7 +17,7 @@ class RecurrentEncoder(tf.keras.layers.Layer):
         self.bi_lstm = BidirectionalLSTM(num_layers=num_layers, num_hidden=num_hidden, return_states=True)
         self.attention = BahdanauAttention(size=2 * num_hidden)
 
-    def __call__(self, inputs, training=False, **kwargs):
+    def call(self, inputs, training=False, **kwargs):
         x, mask = inputs
         assert isinstance(x, tf.Tensor)
 
@@ -44,7 +44,7 @@ class RecurrentDecoder(tf.keras.layers.Layer):
         self.dense = tf.keras.layers.Dense(units=dims, activation=tf.nn.relu)
         self.bias = tf.Variable(tf.zeros([num_labels]), name='bias', dtype=tf.float32, trainable=True)
 
-    def __call__(self, inputs, training=False, **kwargs):
+    def call(self, inputs, training=False, **kwargs):
         _, _, x, _, context, _, embeddings = inputs
         assert isinstance(x, tf.Tensor)
 

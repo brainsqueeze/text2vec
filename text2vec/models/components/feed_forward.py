@@ -1,9 +1,10 @@
 import tensorflow as tf
 
 
-class PositionWiseFFN(object):
+class PositionWiseFFN(tf.keras.layers.Layer):
 
     def __init__(self, emb_dims):
+        super(PositionWiseFFN, self).__init__()
         hidden_dim_size = 4 * emb_dims
 
         self.ConvInner = tf.Variable(
@@ -19,7 +20,7 @@ class PositionWiseFFN(object):
             trainable=True
         )
 
-    def __call__(self, x):
+    def call(self, x):
         with tf.name_scope("PositionWiseFeedForward"):
             x = tf.nn.conv1d(x, filters=self.ConvInner, stride=1, padding='SAME')
             x = tf.nn.relu(x)

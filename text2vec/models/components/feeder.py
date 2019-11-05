@@ -7,7 +7,7 @@ class Tokenizer(tf.keras.layers.Layer):
         super(Tokenizer, self).__init__(name="Tokenizer")
         self.sep = sep
 
-    def __call__(self, corpus):
+    def call(self, corpus):
         return tf.strings.split(corpus, self.sep)
 
 
@@ -32,7 +32,7 @@ class TextInput(tf.keras.layers.Layer):
         self.max_len = tf.constant(max_sequence_length)
         self.slicer = tf.keras.layers.Lambda(lambda x: x[:, :max_sequence_length])
 
-    def __call__(self, tokens, **kwargs):
+    def call(self, tokens, **kwargs):
         with tf.name_scope("RaggedTensorProcessing"):
             emb_dims = self.embeddings.shape[-1]
 
