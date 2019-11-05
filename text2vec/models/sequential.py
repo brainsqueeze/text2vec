@@ -4,8 +4,6 @@ from .components import utils
 
 import tensorflow as tf
 
-from functools import partial
-
 
 class RecurrentEncoder(tf.keras.layers.Layer):
 
