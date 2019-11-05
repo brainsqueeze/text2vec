@@ -131,13 +131,13 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
     )
     if use_attention:
         model = EncodingModel(
-            feeder=TextInput(token_hash=hash_map, emb_dims=dims),
+            feeder=TextInput(token_hash=hash_map, emb_dims=dims, max_sequence_length=max_seq_len),
             encoder=TransformerEncoder(**params),
             decoder=TransformerDecoder(**params, num_labels=size)
         )
     else:
         model = EncodingModel(
-            feeder=TextInput(token_hash=hash_map, emb_dims=dims),
+            feeder=TextInput(token_hash=hash_map, emb_dims=dims, max_sequence_length=max_seq_len),
             encoder=RecurrentEncoder(**params, num_hidden=num_hidden),
             decoder=RecurrentDecoder(**params, num_hidden=num_hidden, num_labels=size)
         )
@@ -151,7 +151,7 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
         loss_val = sequence_cost(
             target_sequences=targets,
             sequence_logits=y_hat[:, :time_steps],
-            num_labels=model.num_labels,
+            num_labels=model.embed_layer.num_labels,
             smoothing=False
         )
         return loss_val
@@ -234,6 +234,24 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
     tf.saved_model.save(frozen_model, f"{log_dir}/frozen/1/")
 
     test_model = tf.saved_model.load(f"{log_dir}/frozen/1/")
+
+    class Exporter(tf.Module):
+
+        def __init__(self):
+            super(Exporter, self).__init__()
+
+        # @tf.function(input_signature=[tf.TensorSpec(shape=[None, None], dtype=tf.string)])
+        # @tf.function(input_signature=[tf.RaggedTensorSpec(ragged_rank=1, dtype=tf.string)])
+        @tf.function(input_signature=[tf.TensorSpec(shape=[None], dtype=tf.string)])
+        def forward(self, tokens):
+            # return model.encode_layer(model.process_inputs(tokens), training=False)
+            tokens = model.tokenizer(tokens)
+            x, mask, _ = model.embed_layer(tokens, max_sequence_length=model.encode_layer.max_sequence_length)
+            return x
+
+    to_export = Exporter()
+    tf.saved_model.save(to_export, f'{log_dir}/export/1')
+
     print(test_model(cv_tokens).numpy())
     return lstm_file_name
 

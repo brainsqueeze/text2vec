@@ -11,7 +11,6 @@ class TransformerEncoder(tf.keras.layers.Layer):
     def __init__(self, max_sequence_len, layers=8, n_stacks=1, embedding_size=50,
                  input_keep_prob=1.0, hidden_keep_prob=1.0):
         super(TransformerEncoder, self).__init__()
-        self.max_sequence_length = max_sequence_len
         dims = embedding_size
         keep_prob = hidden_keep_prob
 
@@ -29,9 +28,6 @@ class TransformerEncoder(tf.keras.layers.Layer):
         x = self.dropout(x + (self.positional_encode * mask), training=training)
 
         for mha, ffn in zip(self.MHA, self.FFN):
-            assert isinstance(mha, MultiHeadAttention)
-            assert isinstance(ffn, PositionWiseFFN)
-
             x = self.h_dropout(mha([x] * 3, training=training), training=training) + x
             x = self.layer_norm(x)
             x = self.h_dropout(ffn(x), training=training) + x
@@ -48,7 +44,6 @@ class TransformerDecoder(tf.keras.layers.Layer):
     def __init__(self, max_sequence_len, num_labels, layers=8, n_stacks=1, embedding_size=50,
                  input_keep_prob=1.0, hidden_keep_prob=1.0):
         super(TransformerDecoder, self).__init__()
-        self.max_sequence_length = max_sequence_len
         dims = embedding_size
         keep_prob = hidden_keep_prob
 
@@ -65,16 +60,8 @@ class TransformerDecoder(tf.keras.layers.Layer):
     def __call__(self, inputs, training=False, **kwargs):
         x_enc, enc_mask, x_dec, dec_mask, context, attention, embeddings = inputs
 
-        assert isinstance(x_enc, tf.Tensor) and isinstance(enc_mask, tf.Tensor)
-        assert isinstance(x_dec, tf.Tensor) and isinstance(dec_mask, tf.Tensor)
-        assert isinstance(context, tf.Tensor) and isinstance(attention, BahdanauAttention)
-        assert isinstance(embeddings, tf.Variable)
-
         x_dec = self.dropout(x_dec + (self.positional_encode * dec_mask), training=training)
         for mha, ffn in zip(self.MHA, self.FFN):
-            assert isinstance(mha, MultiHeadAttention)
-            assert isinstance(ffn, PositionWiseFFN)
-
             x_dec = self.h_dropout(mha([x_dec] * 3, mask_future=True, training=training), training=training) + x_dec
             x_dec = self.layer_norm(x_dec)
 

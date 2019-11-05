@@ -1,4 +1,4 @@
-from text2vec.models import TextInput
+from text2vec.models import TextInput, Tokenizer
 import tensorflow as tf
 
 
@@ -14,46 +14,36 @@ class EncodingModel(tf.keras.Model):
         self.encode_layer = encoder
         self.decode_layer = decoder
 
-        self.num_labels = feeder.num_labels
-
-    def process_inputs(self, tokens, encoding=True):
-        assert isinstance(tokens, tf.RaggedTensor)
-
-        if encoding:
-            x, mask, _ = self.embed_layer(tokens, max_sequence_length=self.encode_layer.max_sequence_length)
-            return x, mask
-
-        batch_size = tokens.nrows()
-
-        with tf.name_scope('targets'):
-            eos = tf.fill([batch_size], value='</s>', name='eos-tag')
-            eos = tf.expand_dims(eos, axis=-1, name='eos-tag-expand')
-
-            target = tf.concat([tokens, eos], axis=1, name='eos-concat')
-            target = tf.ragged.map_flat_values(self.embed_layer.table.lookup, target)
-            target = target[:, :self.decode_layer.max_sequence_length]
-
-        with tf.name_scope('decode-tokens'):
-            bos = tf.fill([batch_size], value='<s>', name='bos-tag')
-            bos = tf.expand_dims(bos, axis=-1, name='bos-tag-expand')
-
-            dec_tokens = tf.concat([bos, tokens], axis=-1, name='bos-concat')
-        x, mask, time_steps = self.embed_layer(dec_tokens, max_sequence_length=self.decode_layer.max_sequence_length)
-        return x, mask, time_steps, target
+        self.tokenizer = Tokenizer(sep=' ')
 
     def __call__(self, sentences, training=False, **kwargs):
-        # turn sentences into ragged tensors of tokens
-        tokens = tf.strings.split(sentences, sep=' ')
+        tokens = self.tokenizer(sentences)  # turn sentences into ragged tensors of tokens
 
         # turn incoming sentences into relevant tensor batches
         with tf.name_scope('Encoding'):
-            x_enc, enc_mask = self.process_inputs(tokens)
+            x_enc, enc_mask, _ = self.embed_layer(tokens)
             if not training:
                 return self.encode_layer((x_enc, enc_mask), training=False)
             x_enc, context = self.encode_layer((x_enc, enc_mask), training=True)
 
         with tf.name_scope('Decoding'):
-            x_dec, dec_mask, dec_time_steps, targets = self.process_inputs(tokens, encoding=False)
+            batch_size = tokens.nrows()
+
+            with tf.name_scope('targets'):
+                eos = tf.fill([batch_size], value='</s>', name='eos-tag')
+                eos = tf.expand_dims(eos, axis=-1, name='eos-tag-expand')
+
+                targets = tf.concat([tokens, eos], axis=1, name='eos-concat')
+                targets = tf.ragged.map_flat_values(self.embed_layer.table.lookup, targets)
+                targets = self.embed_layer.slicer(targets)
+
+            with tf.name_scope('decode-tokens'):
+                bos = tf.fill([batch_size], value='<s>', name='bos-tag')
+                bos = tf.expand_dims(bos, axis=-1, name='bos-tag-expand')
+
+                dec_tokens = tf.concat([bos, tokens], axis=-1, name='bos-concat')
+            x_dec, dec_mask, dec_time_steps = self.embed_layer(dec_tokens)
+
             x_out = self.decode_layer((
                 x_enc,
                 enc_mask,
@@ -66,24 +56,25 @@ class EncodingModel(tf.keras.Model):
 
         return x_out, dec_time_steps, targets.to_tensor(default_value=0)
 
-    @tf.function(input_signature=[tf.TensorSpec(shape=(None,), dtype=tf.string)])
+    @tf.function(input_signature=[tf.TensorSpec(shape=[None], dtype=tf.string)])
     def embed(self, inputs):
-        # turn sentences into ragged tensors of tokens
-        tokens = tf.strings.split(inputs, sep=' ')
-        return self.encode_layer(self.process_inputs(tokens), training=False)
+        tokens = self.tokenizer(inputs)  # turn sentences into ragged tensors of tokens
+        x_enc, enc_mask, _ = self.embed_layer(tokens)
+        return self.encode_layer((x_enc, enc_mask), training=False)
 
 
-class FrozenModel(tf.Module):
+class FrozenModel(tf.keras.Model):
 
     def __init__(self, embed, encoder):
         super(FrozenModel, self).__init__()
+        self.tokenizer = Tokenizer(sep=' ')
         self.embed_layer = embed
         self.encode_layer = encoder
 
-    # @tf.function(input_signature=[tf.TensorSpec(shape=(None,), dtype=tf.string)])
+    @tf.function(input_signature=[tf.TensorSpec(shape=(None,), dtype=tf.string)])
     def embed(self, sentences):
-        tokens = tf.strings.split(sentences, sep=' ')
-        x, mask, _ = self.embed_layer(tokens, max_sequence_length=self.encode_layer.max_sequence_length)
+        tokens = self.tokenizer(sentences)
+        x, mask, _ = self.embed_layer(tokens)
         return self.encode_layer((x, mask), training=False)
 
 
