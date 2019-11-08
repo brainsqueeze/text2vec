@@ -15,9 +15,7 @@ class BahdanauAttention(tf.keras.layers.Layer):
         self.B = tf.Variable(tf.zeros(shape=[size]), name="B", dtype=tf.float32, trainable=True)
         self.U = tf.Variable(tf.zeros(shape=[size]), name="U", dtype=tf.float32, trainable=True)
 
-    def __call__(self, inputs):
-        encoded, decoded = inputs
-
+    def __call__(self, encoded, decoded=None):
         if decoded is None:
             score = tf.tanh(tf.tensordot(encoded, self.W, axes=[-1, 0]) + self.B)
             score = tf.reduce_sum(self.U * score, axis=-1)

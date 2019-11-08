@@ -23,8 +23,7 @@ class TransformerEncoder(tf.keras.layers.Layer):
         self.FFN = [PositionWiseFFN(emb_dims=dims) for _ in range(n_stacks)]
         self.attention = BahdanauAttention(size=dims)
 
-    def __call__(self, inputs, training=False):
-        x, mask = inputs
+    def __call__(self, x, mask, training=False):
         x = self.dropout(x + (self.positional_encode * mask), training=training)
 
         for mha, ffn in zip(self.MHA, self.FFN):
@@ -33,7 +32,7 @@ class TransformerEncoder(tf.keras.layers.Layer):
             x = self.h_dropout(ffn(x), training=training) + x
             x = self.layer_norm(x)
 
-        context = self.attention((x, None))
+        context = self.attention(x)
         if training:
             return x, context
         return context
@@ -57,15 +56,13 @@ class TransformerDecoder(tf.keras.layers.Layer):
         self.FFN = [PositionWiseFFN(emb_dims=dims) for _ in range(n_stacks)]
         self.bias = tf.Variable(tf.zeros([num_labels]), name='bias', dtype=tf.float32, trainable=True)
 
-    def __call__(self, inputs, training=False):
-        x_enc, enc_mask, x_dec, dec_mask, context, attention, embeddings = inputs
-
+    def __call__(self, x_enc, enc_mask, x_dec, dec_mask, context, attention, embeddings, training=False):
         x_dec = self.dropout(x_dec + (self.positional_encode * dec_mask), training=training)
         for mha, ffn in zip(self.MHA, self.FFN):
             x_dec = self.h_dropout(mha([x_dec] * 3, mask_future=True, training=training), training=training) + x_dec
             x_dec = self.layer_norm(x_dec)
 
-            cross_context = attention((x_enc * enc_mask, x_dec * dec_mask))
+            cross_context = attention(encoded=x_enc * enc_mask, decoded=x_dec * dec_mask)
             x_dec = self.h_dropout(self.projection(x_dec, projection_vector=cross_context), training=training) + x_dec
 
             x_dec = self.layer_norm(x_dec)

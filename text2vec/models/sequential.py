@@ -15,13 +15,10 @@ class RecurrentEncoder(tf.keras.layers.Layer):
         self.bi_lstm = BidirectionalLSTM(num_layers=num_layers, num_hidden=num_hidden, return_states=True)
         self.attention = BahdanauAttention(size=2 * num_hidden)
 
-    def call(self, inputs, training=False, **kwargs):
-        x, mask = inputs
-        assert isinstance(x, tf.Tensor)
-
+    def __call__(self, x, mask, training=False, **kwargs):
         x = self.dropout(x, training=training)
         x, states = self.bi_lstm(x)
-        context = self.attention((x, None))
+        context = self.attention(x)
 
         if training:
             return x, context
@@ -38,16 +35,15 @@ class RecurrentDecoder(tf.keras.layers.Layer):
 
         self.dropout = tf.keras.layers.Dropout(1 - input_keep_prob, name="InputDropout")
         self.h_dropout = tf.keras.layers.Dropout(1 - hidden_keep_prob, name="HiddenStateDropout")
+        self.projection = utils.TensorProjection()
+
         self.bi_lstm = BidirectionalLSTM(num_layers=num_layers, num_hidden=num_hidden, return_states=False)
         self.dense = tf.keras.layers.Dense(units=dims, activation=tf.nn.relu)
         self.bias = tf.Variable(tf.zeros([num_labels]), name='bias', dtype=tf.float32, trainable=True)
 
-    def call(self, inputs, training=False, **kwargs):
-        _, _, x, _, context, _, embeddings = inputs
-        assert isinstance(x, tf.Tensor)
-
-        x = self.dropout(x, training=training)
+    def __call__(self, x_enc, enc_mask, x_dec, dec_mask, context, attention, embeddings, training=False, **kwargs):
+        x = self.dropout(x_dec, training=training)
         x = self.bi_lstm(x)
-        x = self.h_dropout(utils.tensor_projection(x, p_vector=context))
+        x = self.h_dropout(self.projection(x, projection_vector=context))
         x = self.dense(x)
         return tf.tensordot(x, embeddings, axes=[2, 1]) + self.bias

@@ -22,7 +22,7 @@ class EncodingModel(tf.keras.Model):
 
         if recurrent:
             self.encode_layer = RecurrentEncoder(num_hidden=num_hidden, **params)
-            self.decode_layer = RecurrentDecoder(num_hidden=num_hidden, **params)
+            self.decode_layer = RecurrentDecoder(num_hidden=num_hidden, num_labels=num_labels, **params)
         else:
             self.encode_layer = TransformerEncoder(n_stacks=n_stacks, layers=layers, **params)
             self.decode_layer = TransformerDecoder(n_stacks=n_stacks, layers=layers, num_labels=num_labels, **params)
@@ -34,8 +34,8 @@ class EncodingModel(tf.keras.Model):
         with tf.name_scope('Encoding'):
             x_enc, enc_mask, _ = self.embed_layer(tokens)
             if not training:
-                return self.encode_layer((x_enc, enc_mask), training=False)
-            x_enc, context = self.encode_layer((x_enc, enc_mask), training=True)
+                return self.encode_layer(x_enc, mask=enc_mask, training=False)
+            x_enc, context = self.encode_layer(x_enc, mask=enc_mask, training=True)
 
         with tf.name_scope('Decoding'):
             batch_size = tokens.nrows()
@@ -54,16 +54,16 @@ class EncodingModel(tf.keras.Model):
 
                 dec_tokens = tf.concat([bos, tokens], axis=-1, name='bos-concat')
             x_dec, dec_mask, dec_time_steps = self.embed_layer(dec_tokens)
-
-            x_out = self.decode_layer((
-                x_enc,
-                enc_mask,
-                x_dec,
-                dec_mask,
-                context,
-                self.encode_layer.attention,
-                self.embed_layer.embeddings
-            ), training=training)
+            x_out = self.decode_layer(
+                x_enc=x_enc,
+                enc_mask=enc_mask,
+                x_dec=x_dec,
+                dec_mask=dec_mask,
+                context=context,
+                attention=self.encode_layer.attention,
+                embeddings=self.embed_layer.embeddings,
+                training=training
+            )
 
         return x_out, dec_time_steps, targets.to_tensor(default_value=0)
 
@@ -71,7 +71,7 @@ class EncodingModel(tf.keras.Model):
     def embed(self, sentences):
         tokens = self.tokenizer(sentences)  # turn sentences into ragged tensors of tokens
         x_enc, enc_mask, _ = self.embed_layer(tokens)
-        return self.encode_layer((x_enc, enc_mask), training=False)
+        return self.encode_layer(x_enc, mask=enc_mask, training=False)
 
 
 def sequence_cost(target_sequences, sequence_logits, num_labels, smoothing=False):
