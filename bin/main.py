@@ -1,6 +1,4 @@
 from text2vec.preprocessing import utils as str_utils
-from text2vec.models import TextInput
-from text2vec.models import TransformerEncoder, TransformerDecoder, RecurrentEncoder, RecurrentDecoder
 from text2vec.optimizer_tools import RampUpDecaySchedule
 from text2vec.training_tools import EncodingModel, sequence_cost
 from . import utils
@@ -73,7 +71,7 @@ def mini_batches(corpus, size, n_batches, seed):
 
 
 def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, max_allowed_seq=-1,
-          attention_size=128, layers=8, batch_size=32, num_batches=50, num_epochs=10,
+          layers=8, batch_size=32, num_batches=50, num_epochs=10,
           data_path=None, model_path=None, use_attention=False, verbose=False):
     """
     Core training algorithm
@@ -82,7 +80,6 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
     :param embedding_size: size of the word-embedding dimensions (int, optional)
     :param num_hidden: number of hidden LSTM dimensions (int, optional)
     :param max_allowed_seq: the maximum sequence length allowed, model will truncate if longer (int)
-    :param attention_size: number of hidden attention-mechanism dimensions (int, optional)
     :param layers: number of multi-head attention mechanisms for transformer model (int, optional)
     :param batch_size: size of each mini-batch (int, optional)
     :param num_batches: number of mini-batches in each epoch (int, optional)
@@ -130,17 +127,9 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
         hidden_keep_prob=0.75
     )
     if use_attention:
-        model = EncodingModel(
-            feeder=TextInput(token_hash=hash_map, emb_dims=dims, max_sequence_length=max_seq_len),
-            encoder=TransformerEncoder(**params),
-            decoder=TransformerDecoder(**params, num_labels=size)
-        )
+        model = EncodingModel(token_hash=hash_map, layers=layers, **params)
     else:
-        model = EncodingModel(
-            feeder=TextInput(token_hash=hash_map, emb_dims=dims, max_sequence_length=max_seq_len),
-            encoder=RecurrentEncoder(**params, num_hidden=num_hidden),
-            decoder=RecurrentDecoder(**params, num_hidden=num_hidden, num_labels=size)
-        )
+        model = EncodingModel(token_hash=hash_map, num_hidden=num_hidden, recurrent=True, **params)
 
     with tf.name_scope("Optimizer"):
         learning_rate = RampUpDecaySchedule(embedding_size=dims, warmup_steps=4000)
@@ -184,7 +173,7 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
     reader = tf.train.load_checkpoint(log_dir)
     embeddings_config.tensor_name = [key for key in reader.get_variable_to_shape_map() if "embedding" in key][0]
     embeddings_config.metadata_path = log_dir + "/metadata.tsv"
-    projector.visualize_embeddings(logdir=log_dir, config=config_)
+    projector.visualize_embeddings(logdir=log_dir + "/training", config=config_)
 
     train_loss = tf.keras.metrics.Mean('train-loss', dtype=tf.float32)
 
@@ -247,7 +236,6 @@ def main():
     parser.add_argument("--tokens", type=int, help="Set the number of tokens to use.", default=10000)
     parser.add_argument("--embedding", type=int, help="Set the dimensionality of the word embeddings.", default=256)
     parser.add_argument("--hidden", type=int, help="Number of hidden LSTM dimensions.", default=128)
-    parser.add_argument("--attention_size", type=int, help="Dimension of attention mechanism weight.", default=128)
     parser.add_argument("--layers", type=int, help="Number of self-attention layers.", default=8)
     parser.add_argument("--mb_size", type=int, help="Number of examples in each mini-batch.", default=32)
     parser.add_argument("--num_mb", type=int, help="Number of mini-batches per epoch.", default=40)
@@ -279,7 +267,6 @@ def main():
             max_allowed_seq=args.max_len,
             embedding_size=args.embedding,
             num_hidden=args.hidden,
-            attention_size=args.attention_size,
             layers=args.layers,
             batch_size=args.mb_size,
             num_batches=args.num_mb,

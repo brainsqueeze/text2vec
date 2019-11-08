@@ -1,22 +1,33 @@
 from text2vec.models import TextInput, Tokenizer
+from text2vec.models import TransformerEncoder, TransformerDecoder
+from text2vec.models import RecurrentEncoder, RecurrentDecoder
 import tensorflow as tf
 
 
 class EncodingModel(tf.keras.Model):
 
-    def __init__(self, feeder, encoder, decoder):
+    def __init__(self, token_hash, max_sequence_len, n_stacks=1, layers=8, num_hidden=64,
+                 input_keep_prob=1.0, hidden_keep_prob=1.0, embedding_size=64, recurrent=False, sep=' '):
         super(EncodingModel, self).__init__()
-        assert isinstance(feeder, TextInput)
-        assert isinstance(encoder, tf.keras.layers.Layer)
-        assert isinstance(decoder, tf.keras.layers.Layer)
 
-        self.embed_layer = feeder
-        self.encode_layer = encoder
-        self.decode_layer = decoder
+        params = dict(
+            max_sequence_len=max_sequence_len,
+            embedding_size=embedding_size,
+            input_keep_prob=input_keep_prob,
+            hidden_keep_prob=hidden_keep_prob
+        )
+        self.embed_layer = TextInput(token_hash=token_hash, **params)
+        self.tokenizer = Tokenizer(sep)
+        num_labels = len(token_hash) + 1
 
-        self.tokenizer = Tokenizer(sep=' ')
+        if recurrent:
+            self.encode_layer = RecurrentEncoder(num_hidden=num_hidden, **params)
+            self.decode_layer = RecurrentDecoder(num_hidden=num_hidden, **params)
+        else:
+            self.encode_layer = TransformerEncoder(n_stacks=n_stacks, layers=layers, **params)
+            self.decode_layer = TransformerDecoder(n_stacks=n_stacks, layers=layers, num_labels=num_labels, **params)
 
-    def __call__(self, sentences, training=False, **kwargs):
+    def call(self, sentences, training=False):
         tokens = self.tokenizer(sentences)  # turn sentences into ragged tensors of tokens
 
         # turn incoming sentences into relevant tensor batches

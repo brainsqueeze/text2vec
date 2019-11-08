@@ -32,20 +32,19 @@ class BidirectionalLSTM(tf.keras.layers.Layer):
 
         return fwd_inputs, bwd_inputs
 
-    def __call__(self, inputs, initial_states=None, training=False, **kwargs):
-        with tf.name_scope("BidirectionalLSTM"):
-            layer = 0
-            for forward, backward in zip(self.FWD, self.BWD):
-                fwd_inputs, bwd_inputs = self.__make_inputs(inputs, initial_states=initial_states, layer=layer)
+    def call(self, inputs, initial_states=None, training=False):
+        layer = 0
+        for forward, backward in zip(self.FWD, self.BWD):
+            fwd_inputs, bwd_inputs = self.__make_inputs(inputs, initial_states=initial_states, layer=layer)
 
-                if self.return_states:
-                    decode_forward, *forward_state = forward(**fwd_inputs)
-                    decode_backward, *backward_state = backward(**bwd_inputs)
-                else:
-                    decode_forward = forward(**fwd_inputs)
-                    decode_backward = backward(**bwd_inputs)
-                inputs = self.concat([decode_forward, decode_backward])
-                layer += 1
             if self.return_states:
-                return inputs, [forward_state, backward_state]
-            return inputs
+                decode_forward, *forward_state = forward(**fwd_inputs)
+                decode_backward, *backward_state = backward(**bwd_inputs)
+            else:
+                decode_forward = forward(**fwd_inputs)
+                decode_backward = backward(**bwd_inputs)
+            inputs = self.concat([decode_forward, decode_backward])
+            layer += 1
+        if self.return_states:
+            return inputs, [forward_state, backward_state]
+        return inputs

@@ -21,7 +21,6 @@ class PositionWiseFFN(tf.keras.layers.Layer):
         )
 
     def call(self, x):
-        with tf.name_scope("PositionWiseFeedForward"):
-            x = tf.nn.conv1d(x, filters=self.ConvInner, stride=1, padding='SAME')
-            x = tf.nn.relu(x)
-            return tf.nn.conv1d(x, filters=self.ConvOuter, stride=1, padding='SAME')
+        x = tf.nn.conv1d(x, filters=self.ConvInner, stride=1, padding='SAME')
+        x = tf.nn.relu(x)
+        return tf.nn.conv1d(x, filters=self.ConvOuter, stride=1, padding='SAME')

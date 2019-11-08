@@ -29,12 +29,11 @@ class LayerNorm(tf.keras.layers.Layer):
         self.scale = tf.constant(scale, dtype=tf.float32)
         self.bias = tf.constant(bias, dtype=tf.float32)
 
-    def __call__(self, x):
-        with tf.name_scope("LayerNorm"):
-            mean = tf.reduce_mean(x, axis=-1, keepdims=True)
-            variance = tf.reduce_mean(tf.square(x - mean), axis=-1, keepdims=True)
-            norm = (x - mean) * tf.math.rsqrt(variance + self.epsilon)
-            return norm * self.scale + self.bias
+    def call(self, x):
+        mean = tf.reduce_mean(x, axis=-1, keepdims=True)
+        variance = tf.reduce_mean(tf.square(x - mean), axis=-1, keepdims=True)
+        norm = (x - mean) * tf.math.rsqrt(variance + self.epsilon)
+        return norm * self.scale + self.bias
 
 
 class TensorProjection(tf.keras.layers.Layer):
@@ -42,15 +41,14 @@ class TensorProjection(tf.keras.layers.Layer):
     def __init__(self):
         super(TensorProjection, self).__init__(name="TensorProjection")
 
-    def __call__(self, x, projection_vector):
-        with tf.name_scope("TensorProjection"):
-            inner_product = tf.einsum("ijk,ik->ij", x, projection_vector)
-            time_steps = tf.shape(x)[1]
-            p_vector_norm_squared = tf.norm(projection_vector, axis=1) ** 2
-            p_vector_norm_squared = tf.tile(tf.expand_dims(p_vector_norm_squared, -1), [1, time_steps])
+    def call(self, x, projection_vector):
+        inner_product = tf.einsum("ijk,ik->ij", x, projection_vector)
+        time_steps = tf.shape(x)[1]
+        p_vector_norm_squared = tf.norm(projection_vector, axis=1) ** 2
+        p_vector_norm_squared = tf.tile(tf.expand_dims(p_vector_norm_squared, -1), [1, time_steps])
 
-            alpha = tf.divide(inner_product, p_vector_norm_squared)
-            return tf.einsum("ij,ik->ijk", alpha, projection_vector)
+        alpha = tf.divide(inner_product, p_vector_norm_squared)
+        return tf.einsum("ij,ik->ijk", alpha, projection_vector)
 
 
 def positional_encode(emb_dims, max_sequence_length):
