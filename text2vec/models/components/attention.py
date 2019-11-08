@@ -15,7 +15,7 @@ class BahdanauAttention(tf.keras.layers.Layer):
         self.B = tf.Variable(tf.zeros(shape=[size]), name="B", dtype=tf.float32, trainable=True)
         self.U = tf.Variable(tf.zeros(shape=[size]), name="U", dtype=tf.float32, trainable=True)
 
-    def call(self, inputs):
+    def __call__(self, inputs):
         encoded, decoded = inputs
 
         if decoded is None:
@@ -46,7 +46,7 @@ class SingleHeadAttention(tf.keras.layers.Layer):
         self.dropout = tf.keras.layers.Dropout(1 - keep_prob)
         self.dot_attention = ScalarDotAttention()
 
-    def call(self, inputs, mask_future=False, training=False):
+    def __call__(self, inputs, mask_future=False, training=False):
         queries, keys, values = inputs
 
         queries = self.dropout(queries, training=training)
@@ -70,7 +70,7 @@ class MultiHeadAttention(tf.keras.layers.Layer):
 
         self.dense = tf.keras.layers.Dense(units=emb_dims, use_bias=False)
 
-    def call(self, inputs, mask_future=False, training=False):
+    def __call__(self, inputs, mask_future=False, training=False):
         heads = [layer(inputs, mask_future=mask_future, training=training) for layer in self.layer_heads]
         total_head = tf.concat(heads, axis=-1)
         return self.dense(total_head)

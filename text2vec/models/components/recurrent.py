@@ -32,7 +32,7 @@ class BidirectionalLSTM(tf.keras.layers.Layer):
 
         return fwd_inputs, bwd_inputs
 
-    def call(self, inputs, initial_states=None, training=False):
+    def __call__(self, inputs, initial_states=None, training=False):
         layer = 0
         for forward, backward in zip(self.FWD, self.BWD):
             fwd_inputs, bwd_inputs = self.__make_inputs(inputs, initial_states=initial_states, layer=layer)

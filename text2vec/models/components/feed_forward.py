@@ -20,7 +20,7 @@ class PositionWiseFFN(tf.keras.layers.Layer):
             trainable=True
         )
 
-    def call(self, x):
+    def __call__(self, x):
         x = tf.nn.conv1d(x, filters=self.ConvInner, stride=1, padding='SAME')
         x = tf.nn.relu(x)
         return tf.nn.conv1d(x, filters=self.ConvOuter, stride=1, padding='SAME')

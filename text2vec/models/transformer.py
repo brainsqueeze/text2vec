@@ -23,7 +23,7 @@ class TransformerEncoder(tf.keras.layers.Layer):
         self.FFN = [PositionWiseFFN(emb_dims=dims) for _ in range(n_stacks)]
         self.attention = BahdanauAttention(size=dims)
 
-    def call(self, inputs, training=False):
+    def __call__(self, inputs, training=False):
         x, mask = inputs
         x = self.dropout(x + (self.positional_encode * mask), training=training)
 
@@ -57,7 +57,7 @@ class TransformerDecoder(tf.keras.layers.Layer):
         self.FFN = [PositionWiseFFN(emb_dims=dims) for _ in range(n_stacks)]
         self.bias = tf.Variable(tf.zeros([num_labels]), name='bias', dtype=tf.float32, trainable=True)
 
-    def call(self, inputs, training=False):
+    def __call__(self, inputs, training=False):
         x_enc, enc_mask, x_dec, dec_mask, context, attention, embeddings = inputs
 
         x_dec = self.dropout(x_dec + (self.positional_encode * dec_mask), training=training)

@@ -7,7 +7,7 @@ class Tokenizer(tf.keras.layers.Layer):
         super(Tokenizer, self).__init__(name="Tokenizer")
         self.sep = sep
 
-    def call(self, corpus):
+    def __call__(self, corpus):
         return tf.strings.split(corpus, self.sep)
 
 
@@ -32,7 +32,7 @@ class TextInput(tf.keras.layers.Layer):
         self.max_len = tf.constant(max_sequence_len)
         self.slicer = tf.keras.layers.Lambda(lambda x: x[:, :max_sequence_len])
 
-    def call(self, tokens):
+    def __call__(self, tokens):
         emb_dims = self.embeddings.shape[-1]
 
         hashed = tf.ragged.map_flat_values(self.table.lookup, tokens)

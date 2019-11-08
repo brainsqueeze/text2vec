@@ -1,5 +1,7 @@
 from text2vec.preprocessing import utils as str_utils
 from text2vec.optimizer_tools import RampUpDecaySchedule
+from text2vec.models import TextInput
+from text2vec.models import TransformerEncoder, TransformerDecoder, RecurrentEncoder, RecurrentDecoder
 from text2vec.training_tools import EncodingModel, sequence_cost
 from . import utils
 

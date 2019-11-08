@@ -29,7 +29,7 @@ class LayerNorm(tf.keras.layers.Layer):
         self.scale = tf.constant(scale, dtype=tf.float32)
         self.bias = tf.constant(bias, dtype=tf.float32)
 
-    def call(self, x):
+    def __call__(self, x):
         mean = tf.reduce_mean(x, axis=-1, keepdims=True)
         variance = tf.reduce_mean(tf.square(x - mean), axis=-1, keepdims=True)
         norm = (x - mean) * tf.math.rsqrt(variance + self.epsilon)
@@ -41,7 +41,7 @@ class TensorProjection(tf.keras.layers.Layer):
     def __init__(self):
         super(TensorProjection, self).__init__(name="TensorProjection")
 
-    def call(self, x, projection_vector):
+    def __call__(self, x, projection_vector):
         inner_product = tf.einsum("ijk,ik->ij", x, projection_vector)
         time_steps = tf.shape(x)[1]
         p_vector_norm_squared = tf.norm(projection_vector, axis=1) ** 2
