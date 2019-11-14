@@ -221,7 +221,8 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
         lstm_file_name = checkpoint_manager.save()
 
     utils.log("Saving a frozen model")
-    tf.saved_model.save(model, f"{log_dir}/frozen/1")
+    signatures = {"serving_default": model.embed, "token_embed": model.token_embed}
+    tf.saved_model.save(model, f"{log_dir}/frozen/1", signatures)
 
     utils.log("Reloading frozen model and comparing output to in-memory model")
     test = tf.saved_model.load(f"{log_dir}/frozen/1")

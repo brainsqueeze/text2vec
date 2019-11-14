@@ -12,38 +12,17 @@ import os
 class Embedder(object):
 
     def __init__(self):
-        self.__log_dir = os.path.dirname(os.path.abspath(__file__)) + "/../../" + os.environ["MODEL_PATH"]
+        log_dir = f"{os.path.dirname(os.path.abspath(__file__))}/../../{os.environ['MODEL_PATH']}/saved"
+        model = tf.saved_model.load(log_dir)
 
-        gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.8)
-        sess_config = tf.ConfigProto(
-            gpu_options=gpu_options,
-            allow_soft_placement=True,
-            log_device_placement=False
-        )
-        self.__session = tf.Session(graph=tf.Graph(), config=sess_config)
-        self.__load_model()
-        self.predict("")  # prime the graph to remove initial latency
-
-    def __load_model(self):
-        model = tf.compat.v1.saved_model.loader.load(
-            self.__session,
-            tags=[tf.saved_model.tag_constants.SERVING],
-            export_dir=self.__log_dir + "/saved"
-        )
-
-        def_key = tf.compat.v1.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
-        graph = self.__session.graph
-        self.__seq_input = graph.get_tensor_by_name(model.signature_def[def_key].inputs["sequences"].name)
-        self.__output = graph.get_tensor_by_name(model.signature_def[def_key].outputs["embedding"].name)
-
-        self.__session.run(graph.get_operation_by_name('init_all_tables'))
-        return graph
+        self.__embedding_model = model.signatures["serving_default"]
+        self.__word_embedding_model = model.signatures["token_embed"]
 
     def __embed(self, corpus):
         assert isinstance(corpus, list)
         epsilon = 1e-8
 
-        vectors = self.__session.run(self.__output, feed_dict={self.__seq_input: corpus})
+        vectors = self.__embedding_model(tf.constant(corpus))["output_0"].numpy()
         vectors /= (np.linalg.norm(vectors, axis=1, keepdims=True) + epsilon)
         return vectors
 

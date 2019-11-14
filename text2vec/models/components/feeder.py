@@ -32,7 +32,7 @@ class TextInput(tf.keras.layers.Layer):
         self.max_len = tf.constant(max_sequence_len)
         self.slicer = tf.keras.layers.Lambda(lambda x: x[:, :max_sequence_len])
 
-    def __call__(self, tokens):
+    def __call__(self, tokens, output_embeddings=False):
         emb_dims = self.embeddings.shape[-1]
 
         hashed = tf.ragged.map_flat_values(self.table.lookup, tokens)
@@ -43,6 +43,8 @@ class TextInput(tf.keras.layers.Layer):
         padding = tf.zeros(shape=(batch_size, self.max_len - time_steps, emb_dims), dtype=tf.float32)
 
         x = tf.ragged.map_flat_values(tf.nn.embedding_lookup, self.embeddings, hashed)
+        if output_embeddings:
+            return x
         x = x.to_tensor()
 
         # pad to full max sequence length

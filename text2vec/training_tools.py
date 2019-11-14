@@ -73,6 +73,11 @@ class EncodingModel(tf.keras.Model):
         x_enc, enc_mask, _ = self.embed_layer(tokens)
         return self.encode_layer(x_enc, mask=enc_mask, training=False)
 
+    @tf.function(input_signature=[tf.TensorSpec(shape=[None], dtype=tf.string)])
+    def token_embed(self, sentences):
+        tokens = self.tokenizer(sentences)  # turn sentences into ragged tensors of tokens
+        return tokens.to_tensor(''), self.embed_layer(tokens, output_embeddings=True).to_tensor(0)
+
 
 def sequence_cost(target_sequences, sequence_logits, num_labels, smoothing=False):
     with tf.name_scope('Cost'):
