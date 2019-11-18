@@ -8,7 +8,7 @@ To install the core components as an import-able Python library
 simply run
 
 ```bash
-pip install 'git+https://github.com/brainsqueeze/text2vec.git[device]'
+pip install 'text2vec[device] @ git+https://github.com/brainsqueeze/text2vec.git'
 ```
 where `device` is either `cpu` or `gpu`, depending on which flavor
 of TensorFlow one wishes to install.
