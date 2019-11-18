@@ -2,6 +2,17 @@
 
 Models for contextual embedding of arbitrary texts.
 
+## Setup
+
+To install the core components as an import-able Python library
+simply run
+
+```bash
+pip install 'git+https://github.com/brainsqueeze/text2vec.git[device]'
+```
+where `device` is either `cpu` or `gpu`, depending on which flavor
+of TensorFlow one wishes to install.
+
 ## Motivation
 
 Word embedding models have been very beneficial to natural 

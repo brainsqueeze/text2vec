@@ -74,7 +74,7 @@ def mini_batches(corpus, size, n_batches, seed):
 
 def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, max_allowed_seq=-1,
           layers=8, batch_size=32, num_batches=50, num_epochs=10,
-          data_path=None, model_path=None, use_attention=False, verbose=False):
+          data_path=None, model_path=None, use_attention=False):
     """
     Core training algorithm
     :param model_folder: name of the folder to create for the trained model (str)
@@ -89,7 +89,6 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
     :param data_path: valid path to the training data (str)
     :param model_path: valid path to where the model will be saved (str)
     :param use_attention: set to True to use the self-attention only model (bool)
-    :param verbose: set to True to log learned weight distributions and validation set performance (bool, optional)
     """
 
     log_dir = f"{model_path}/{model_folder}" if model_path else f"{root}/../../text2vec/{model_folder}"
@@ -114,7 +113,6 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
 
     utils.log("Building computation graph")
     log_step = num_batches // 10
-    size = len(hash_map) + 1
     dims = embedding_size
 
     # GPU config
@@ -247,7 +245,6 @@ def main():
     parser.add_argument("--max_len", type=int, help="Maximum allowed sequence length", default=-1)
     parser.add_argument("--data_path", type=str, help="Path to the training data file(s).")
     parser.add_argument("--model_path", type=str, help="Path to place the saved model.")
-    parser.add_argument("--verbose", action='store_true', help="Set to evaluate the CV set after each epoch.")
 
     args = parser.parse_args()
 
@@ -276,8 +273,7 @@ def main():
             num_epochs=args.epochs,
             use_attention=bool(args.attention),
             data_path=args.data_path,
-            model_path=args.model_path,
-            verbose=args.verbose
+            model_path=args.model_path
         )
     elif args.run == "infer":
         os.environ["MODEL_PATH"] = args.model_name
