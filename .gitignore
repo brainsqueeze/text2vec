@@ -12,6 +12,7 @@
 **/node_modules
 
 # ignore trained model files
+**/scratch*
 **/training/
 **/validation/
 **/checkpoint

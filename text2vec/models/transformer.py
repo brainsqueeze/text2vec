@@ -32,7 +32,7 @@ class TransformerEncoder(tf.keras.layers.Layer):
             x = self.h_dropout(ffn(x), training=training) + x
             x = self.layer_norm(x)
 
-        context = self.attention(x)
+        context = self.attention(x * mask)
         if training:
             return x, context
         return context
