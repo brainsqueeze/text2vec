@@ -11,7 +11,7 @@ tf_options = dict(
 
 setup(
     name="text2vec",
-    version="0.1",
+    version="0.2",
     description="Building blocks for text vectorization and embedding",
     author="Dave Hollander",
     author_url="https://github.com/brainsqueeze",
