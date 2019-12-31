@@ -62,7 +62,7 @@ class TransformerDecoder(tf.keras.layers.Layer):
             x_dec = self.h_dropout(mha([x_dec] * 3, mask_future=True, training=training), training=training) + x_dec
             x_dec = self.layer_norm(x_dec)
 
-            cross_context = attention(encoded=x_enc * enc_mask, decoded=x_dec * dec_mask)
+            cross_context = attention(encoded=x_enc, decoded=x_dec)
             x_dec = self.h_dropout(self.projection(x_dec, projection_vector=cross_context), training=training) + x_dec
 
             x_dec = self.layer_norm(x_dec)
