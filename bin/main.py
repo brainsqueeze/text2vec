@@ -2,7 +2,7 @@ from text2vec.preprocessing import utils as str_utils
 from text2vec.optimizer_tools import RampUpDecaySchedule
 from text2vec.models import TextInput
 from text2vec.models import TransformerEncoder, TransformerDecoder, RecurrentEncoder, RecurrentDecoder
-from text2vec.training_tools import EncodingModel, sequence_cost
+from text2vec.training_tools import EncodingModel, sequence_cost, vector_cost
 from . import utils
 
 import tensorflow as tf
@@ -10,6 +10,8 @@ import numpy as np
 
 from tensorboard.plugins import projector
 
+from random import shuffle
+import itertools
 import argparse
 import os
 
@@ -55,36 +57,34 @@ def test_val_split(corpus, val_size):
     return corpus, cv_set
 
 
-def mini_batches(corpus, size, n_batches, seed):
+def mini_batches(corpus, size):
     """
     Mini-batch generator for feeding training examples into the model
     :param corpus: training set of sequence-encoded data (list)
     :param size: size of each mini-batch (int)
-    :param n_batches: number of mini-batches in each epoch (int)
-    :param seed: numpy randomization seed (int)
-    :return: mini-batch, dimensions are [batch_size, max_len] (np.ndarray)
+    :return: mini-batch of text data (list of strings)
     """
 
-    np.random.seed(seed)
-    s = np.random.choice(range(len(corpus)), replace=False, size=min(len(corpus), size * n_batches)).astype(np.int32)
+    shuffle(corpus)
 
-    for mb in range(n_batches):
-        yield [' '.join(str_utils.clean_and_split(corpus[index])) for index in s[mb * size: (mb + 1) * size]]
+    for i in range(0, len(corpus) + size, size):
+        mini_batch = corpus[i: i + size]
+        if not mini_batch:
+            continue
+        yield [' '.join(str_utils.clean_and_split(text)) for text in mini_batch]
 
 
 def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, max_allowed_seq=-1,
-          layers=8, batch_size=32, num_batches=50, num_epochs=10,
-          data_path=None, model_path=None, use_attention=False):
+          layers=8, batch_size=32, num_epochs=10, data_path=None, model_path=None, use_attention=False):
     """
     Core training algorithm
     :param model_folder: name of the folder to create for the trained model (str)
     :param num_tokens: number of vocab tokens to keep from the training corpus (int, optional)
     :param embedding_size: size of the word-embedding dimensions (int, optional)
-    :param num_hidden: number of hidden LSTM dimensions (int, optional)
+    :param num_hidden: number of hidden model dimensions (int, optional)
     :param max_allowed_seq: the maximum sequence length allowed, model will truncate if longer (int)
     :param layers: number of multi-head attention mechanisms for transformer model (int, optional)
     :param batch_size: size of each mini-batch (int, optional)
-    :param num_batches: number of mini-batches in each epoch (int, optional)
     :param num_epochs: number of training epochs (int, optional)
     :param data_path: valid path to the training data (str)
     :param model_path: valid path to where the model will be saved (str)
@@ -112,7 +112,7 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
         tsv.write("<unk>\n")
 
     utils.log("Building computation graph")
-    log_step = num_batches // 10
+    log_step = len(train_corpus[::batch_size]) // 10
     dims = embedding_size
 
     # GPU config
@@ -131,28 +131,32 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
     else:
         model = EncodingModel(token_hash=hash_map, num_hidden=num_hidden, recurrent=True, **params)
 
-    with tf.name_scope("Optimizer"):
-        learning_rate = RampUpDecaySchedule(embedding_size=dims, warmup_steps=4000)
-        optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+    learning_rate = RampUpDecaySchedule(embedding_size=dims, warmup_steps=4000)
+    optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+    train_loss = tf.keras.metrics.Mean('train-loss', dtype=tf.float32)
 
     def compute_loss(sentences):
-        y_hat, time_steps, targets = model(sentences, training=True)
+        y_hat, time_steps, targets, vectors = model(sentences, training=True, return_vectors=True)
         loss_val = sequence_cost(
             target_sequences=targets,
             sequence_logits=y_hat[:, :time_steps],
             num_labels=model.embed_layer.num_labels,
             smoothing=False
         )
-        return loss_val
+        orthogonal_cost = vector_cost(context_vectors=vectors)
+        return loss_val + orthogonal_cost
 
-    @tf.function(input_signature=[tf.TensorSpec(shape=(None,), dtype=tf.string)])
+    # @tf.function(input_signature=[tf.TensorSpec(shape=(None,), dtype=tf.string)])
     def train_step(sentences):
-        loss_val = compute_loss(sentences)
-        gradients = tf.gradients(loss_val, model.trainable_variables)
+        # loss_val = compute_loss(sentences)
+        # gradients = tf.gradients(loss_val, model.trainable_variables)
+        with tf.GradientTape() as tape:
+            loss_val = compute_loss(sentences)
+        gradients = tape.gradient(loss_val, model.trainable_variables)
         optimizer.apply_gradients(zip(gradients, model.trainable_variables))
-        return loss_val, gradients
+        train_loss(loss_val)  # log the loss value to TensorBoard
 
-    lstm_file_name = None
+    model_file_name = None
     test_sentences = [
         "The movie was great!",
         "The movie was terrible."
@@ -165,17 +169,14 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
     checkpoint_manager = tf.train.CheckpointManager(checkpoint, log_dir, max_to_keep=5)
 
     # add word labels to the projector
-    config_ = projector.ProjectorConfig()
-    embeddings_config = config_.embeddings.add()
+    config = projector.ProjectorConfig()
+    embeddings_config = config.embeddings.add()
 
-    # embeddings_config.tensor_name = model.embed_layer.embeddings.name
     checkpoint_manager.save()
     reader = tf.train.load_checkpoint(log_dir)
     embeddings_config.tensor_name = [key for key in reader.get_variable_to_shape_map() if "embedding" in key][0]
     embeddings_config.metadata_path = log_dir + "/metadata.tsv"
-    projector.visualize_embeddings(logdir=log_dir + "/training", config=config_)
-
-    train_loss = tf.keras.metrics.Mean('train-loss', dtype=tf.float32)
+    projector.visualize_embeddings(logdir=log_dir + "/training", config=config)
 
     step = 1
     for epoch in range(num_epochs):
@@ -183,15 +184,14 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
         i = 1
         train_loss.reset_states()
 
-        for x in mini_batches(train_corpus, size=batch_size, n_batches=num_batches, seed=epoch):
+        for x in mini_batches(train_corpus, size=batch_size):
             if len(x) == 0:
                 continue
 
             if step == 1:
                 tf.summary.trace_on(graph=True, profiler=False)
 
-            loss, _ = train_step(x)
-            train_loss(loss)  # log the loss value to TensorBoard
+            train_step(x)
             with summary_writer_train.as_default():
                 if step == 1:
                     tf.summary.trace_export(name='graph', step=1, profiler_outdir=log_dir)
@@ -208,15 +208,16 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
             step += 1
 
         vectors = model.embed(test_tokens)
-        angle = utils.compute_angles(vectors.numpy())[0, 1]
-        print(f"The 'angle' between `{'` and `'.join(test_sentences)}` is {angle} degrees")
+        angles = utils.compute_angles(vectors.numpy())
+        for i, j in itertools.combinations(range(len(test_sentences))):
+            print(f"The angle between '{test_sentences[i]}' and '{test_sentences[j]}' is {angles[i, j]} degrees")
 
         cv_loss = compute_loss(cv_tokens)
         with summary_writer_dev.as_default():
             tf.summary.scalar('loss', cv_loss.numpy(), step=step)
-            tf.summary.scalar('similarity angle', angle, step=step)
+            tf.summary.scalar('similarity angle', angles[0, 1], step=step)
             summary_writer_dev.flush()
-        lstm_file_name = checkpoint_manager.save()
+        model_file_name = checkpoint_manager.save()
 
     utils.log("Saving a frozen model")
     signatures = {"serving_default": model.embed, "token_embed": model.token_embed}
@@ -227,7 +228,7 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
     test_model = test.signatures["serving_default"]
     test_output = test_model(tf.constant(cv_tokens))["output_0"].numpy()
     utils.log(f"Outputs on CV set are approximately the same?: {np.allclose(test_output, model(cv_tokens).numpy())}")
-    return lstm_file_name
+    return model_file_name
 
 
 def main():
@@ -236,10 +237,9 @@ def main():
     parser.add_argument("model_name", type=str, help="Folder name in which to store model.")
     parser.add_argument("--tokens", type=int, help="Set the number of tokens to use.", default=10000)
     parser.add_argument("--embedding", type=int, help="Set the dimensionality of the word embeddings.", default=256)
-    parser.add_argument("--hidden", type=int, help="Number of hidden LSTM dimensions.", default=128)
+    parser.add_argument("--hidden", type=int, help="Number of hidden model dimensions.", default=128)
     parser.add_argument("--layers", type=int, help="Number of self-attention layers.", default=8)
     parser.add_argument("--mb_size", type=int, help="Number of examples in each mini-batch.", default=32)
-    parser.add_argument("--num_mb", type=int, help="Number of mini-batches per epoch.", default=40)
     parser.add_argument("--epochs", type=int, help="Number of epochs to run.", default=100000)
     parser.add_argument("--attention", action='store_true', help="Set to use attention transformer model.")
     parser.add_argument("--max_len", type=int, help="Maximum allowed sequence length", default=-1)
@@ -269,7 +269,6 @@ def main():
             num_hidden=args.hidden,
             layers=args.layers,
             batch_size=args.mb_size,
-            num_batches=args.num_mb,
             num_epochs=args.epochs,
             use_attention=bool(args.attention),
             data_path=args.data_path,

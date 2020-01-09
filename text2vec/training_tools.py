@@ -27,7 +27,7 @@ class EncodingModel(tf.keras.Model):
             self.encode_layer = TransformerEncoder(n_stacks=n_stacks, layers=layers, **params)
             self.decode_layer = TransformerDecoder(n_stacks=n_stacks, layers=layers, num_labels=num_labels, **params)
 
-    def __call__(self, sentences, training=False):
+    def __call__(self, sentences, training=False, return_vectors=False):
         tokens = self.tokenizer(sentences)  # turn sentences into ragged tensors of tokens
 
         # turn incoming sentences into relevant tensor batches
@@ -65,6 +65,8 @@ class EncodingModel(tf.keras.Model):
                 training=training
             )
 
+        if return_vectors:
+            return x_out, dec_time_steps, targets.to_tensor(default_value=0), context
         return x_out, dec_time_steps, targets.to_tensor(default_value=0)
 
     @tf.function(input_signature=[tf.TensorSpec(shape=[None], dtype=tf.string)])
@@ -95,3 +97,10 @@ def sequence_cost(target_sequences, sequence_logits, num_labels, smoothing=False
 
         loss = tf.reduce_mean(loss)
         return loss
+
+
+def vector_cost(context_vectors):
+    with tf.name_scope('VectorCost'):
+        context_vectors = tf.linalg.l2_normalize(context_vectors, axis=-1)
+        cosine = tf.tensordot(context_vectors, tf.transpose(context_vectors), axes=[1, 0])
+        return tf.reduce_mean((tf.identity(cosine) - cosine) ** 2)
