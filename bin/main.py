@@ -146,13 +146,10 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
         orthogonal_cost = vector_cost(context_vectors=vectors)
         return loss_val + orthogonal_cost
 
-    # @tf.function(input_signature=[tf.TensorSpec(shape=(None,), dtype=tf.string)])
+    @tf.function(input_signature=[tf.TensorSpec(shape=(None,), dtype=tf.string)])
     def train_step(sentences):
-        # loss_val = compute_loss(sentences)
-        # gradients = tf.gradients(loss_val, model.trainable_variables)
-        with tf.GradientTape() as tape:
-            loss_val = compute_loss(sentences)
-        gradients = tape.gradient(loss_val, model.trainable_variables)
+        loss_val = compute_loss(sentences)
+        gradients = tf.gradients(loss_val, model.trainable_variables)
         optimizer.apply_gradients(zip(gradients, model.trainable_variables))
         train_loss(loss_val)  # log the loss value to TensorBoard
 

@@ -101,7 +101,7 @@ def sequence_cost(target_sequences, sequence_logits, num_labels, smoothing=False
 
 def vector_cost(context_vectors):
     with tf.name_scope('VectorCost'):
-        rows, _ = context_vectors.shape
+        rows = tf.shape(context_vectors)[0]
         context_vectors = tf.linalg.l2_normalize(context_vectors, axis=-1)
         cosine = tf.tensordot(context_vectors, tf.transpose(context_vectors), axes=[1, 0])
         identity = tf.eye(rows)
