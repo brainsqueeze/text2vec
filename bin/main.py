@@ -206,7 +206,7 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
 
         vectors = model.embed(test_tokens)
         angles = utils.compute_angles(vectors.numpy())
-        for i, j in itertools.combinations(range(len(test_sentences))):
+        for i, j in itertools.combinations(range(len(test_sentences)), r=2):
             print(f"The angle between '{test_sentences[i]}' and '{test_sentences[j]}' is {angles[i, j]} degrees")
 
         cv_loss = compute_loss(cv_tokens)

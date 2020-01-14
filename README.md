@@ -73,11 +73,11 @@ program in [[2](https://arxiv.org/abs/1706.03762)].
 
 Training the LSTM model can be initiated with
 ```bash
-python -m bin.main train text_embedding --embedding 128 --hidden 128 --attention_size 64 --mb_size 32 --num_mb 40 --epochs 50
+python -m bin.main train text_embedding_lstm --embedding 128 --hidden 128 --mb_size 32 --epochs 50
 ```
-Likewise, the transformer model can be trained with 
+Likewise, the attention-based transformer model can be trained with 
 ```bash
-python -m bin.main train text_embedding --embedding 128 --mb_size 32 --num_mb 40 --epochs 50 --attention
+python -m bin.main train text_embedding_attention --embedding 128 --mb_size 32 --epochs 50 --attention
 ```
 
 This command will read a text training set in from [data](text2vec/data) 
@@ -87,12 +87,6 @@ To view the output of training you can then run
 ```bash
 tensorboard --logdir text_embedding
 ```
-
-The default behavior for the text dictionary class is to take the 
-top N tokens based strictly on term-frequencies in the corpus. It 
-is possible to weight the tokens by TF-IDF values at training time 
-and take the top N tokens based on the largest TF-IDF values. This 
-can be done by passing the `--idf 1` flag to the training script.
 
 If you have CUDA and cuDNN installed you can run 
 `pip install -r requirements-gpu.txt`. 
