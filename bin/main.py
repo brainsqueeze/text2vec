@@ -75,7 +75,8 @@ def mini_batches(corpus, size):
 
 
 def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, max_allowed_seq=-1,
-          layers=8, batch_size=32, num_epochs=10, data_path=None, model_path=None, use_attention=False):
+          layers=8, batch_size=32, num_epochs=10, data_path=None, model_path=None, use_attention=False,
+          orthogonal_cost=False):
     """
     Core training algorithm
     :param model_folder: name of the folder to create for the trained model (str)
@@ -143,8 +144,10 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
             num_labels=model.embed_layer.num_labels,
             smoothing=False
         )
-        orthogonal_cost = vector_cost(context_vectors=vectors)
-        return loss_val + orthogonal_cost
+        if orthogonal_cost:
+            orthogonal_cost = vector_cost(context_vectors=vectors)
+            return loss_val + orthogonal_cost
+        return loss_val
 
     @tf.function(input_signature=[tf.TensorSpec(shape=(None,), dtype=tf.string)])
     def train_step(sentences):
@@ -242,6 +245,7 @@ def main():
     parser.add_argument("--max_len", type=int, help="Maximum allowed sequence length", default=-1)
     parser.add_argument("--data_path", type=str, help="Path to the training data file(s).")
     parser.add_argument("--model_path", type=str, help="Path to place the saved model.")
+    parser.add_argument("--orthogonal", action='store_true', help="Set to add a cost to mutually parallel contexts.")
 
     args = parser.parse_args()
 
@@ -269,7 +273,8 @@ def main():
             num_epochs=args.epochs,
             use_attention=bool(args.attention),
             data_path=args.data_path,
-            model_path=args.model_path
+            model_path=args.model_path,
+            orthogonal_cost=args.orthogonal
         )
     elif args.run == "infer":
         os.environ["MODEL_PATH"] = args.model_name
