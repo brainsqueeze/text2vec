@@ -90,6 +90,7 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
     :param data_path: valid path to the training data (str)
     :param model_path: valid path to where the model will be saved (str)
     :param use_attention: set to True to use the self-attention only model (bool)
+    :param orthogonal: set to True to add a cost to mutually parallel context vector (bool)
     """
 
     log_dir = f"{model_path}/{model_folder}" if model_path else f"{root}/../../text2vec/{model_folder}"
