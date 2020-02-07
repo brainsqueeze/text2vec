@@ -118,12 +118,6 @@ To view the output of training you can then run
 tensorboard --logdir text_embedding
 ```
 
-The default behavior for the text dictionary class is to take the 
-top N tokens based strictly on term-frequencies in the corpus. It 
-is possible to weight the tokens by TF-IDF values at training time 
-and take the top N tokens based on the largest TF-IDF values. This 
-can be done by passing the `--idf 1` flag to the training script.
-
 If you have CUDA and cuDNN installed you can run 
 `pip install -r requirements-gpu.txt`. 
 The GPU will automatically be detected and used if present, otherwise 

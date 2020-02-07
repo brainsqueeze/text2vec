@@ -72,7 +72,7 @@ def mini_batches(corpus, size):
 
 def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, max_allowed_seq=-1,
           layers=8, batch_size=32, num_epochs=10, data_files=None, model_path=".", use_attention=False,
-          eval_sentences=None):
+          eval_sentences=None, orthogonal_cost=False):
     """
     Core training algorithm
     :param model_folder: name of the folder to create for the trained model (str)
@@ -86,6 +86,8 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
     :param data_files: list of absolute paths to training data sets (list)
     :param model_path: valid path to where the model will be saved (str)
     :param use_attention: set to True to use the self-attention only model (bool)
+    :param eval_sentences: list of sentences to check the context angles (list)
+    :param orthogonal: set to True to add a cost to mutually parallel context vector (bool)
     """
 
     log_dir = f"{model_path}/{model_folder}" if model_path else f"{root}/../../text2vec/{model_folder}"
@@ -140,8 +142,10 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
             num_labels=model.embed_layer.num_labels,
             smoothing=False
         )
-        orthogonal_cost = vector_cost(context_vectors=vectors)
-        return loss_val + orthogonal_cost
+        if orthogonal_cost:
+            orthogonal_cost = vector_cost(context_vectors=vectors)
+            return loss_val + orthogonal_cost
+        return loss_val
 
     @tf.function(input_signature=[tf.TensorSpec(shape=(None,), dtype=tf.string)])
     def train_step(sentences):
@@ -203,7 +207,7 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
 
         vectors = model.embed(test_tokens)
         angles = utils.compute_angles(vectors.numpy())
-        for i, j in itertools.combinations(range(len(test_sentences))):
+        for i, j in itertools.combinations(range(len(test_sentences)), r=2):
             print(f"The angle between '{test_sentences[i]}' and '{test_sentences[j]}' is {angles[i, j]} degrees")
 
         cv_loss = compute_loss(cv_tokens)
@@ -229,6 +233,7 @@ def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--run", choices=["train", "infer"], help="Run type.", required=True)
     parser.add_argument("--attention", action='store_true', help="Set to use attention transformer model.")
+    parser.add_argument("--orthogonal", action='store_true', help="Set to add a cost to mutually parallel contexts.")
     parser.add_argument("--yaml_config", type=str, help="Path to a valid training config YAML file.", required=True)
     args = parser.parse_args()
 
@@ -250,7 +255,8 @@ def main():
             num_epochs=training_config.get("epochs", 20),
             data_files=training_config.get("data_files"),
             model_path=model_config.get("storage_dir", "."),
-            eval_sentences=training_config.get("eval_sentences")
+            eval_sentences=training_config.get("eval_sentences"),
+            orthogonal_cost=args.orthogonal
         )
     elif args.run == "infer":
         os.environ["MODEL_PATH"] = f'{model_config.get("storage_dir", ".")}/{model_config["name"]}'
