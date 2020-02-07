@@ -12,7 +12,7 @@ import os
 class Embedder(object):
 
     def __init__(self):
-        log_dir = f"{os.path.dirname(os.path.abspath(__file__))}/../../{os.environ['MODEL_PATH']}/saved"
+        log_dir = f"{os.environ['MODEL_PATH']}/frozen/1"
         model = tf.saved_model.load(log_dir)
 
         self.__embedding_model = model.signatures["serving_default"]
@@ -20,11 +20,10 @@ class Embedder(object):
 
     def __embed(self, corpus):
         assert isinstance(corpus, list)
-        epsilon = 1e-8
 
-        vectors = self.__embedding_model(tf.constant(corpus))["output_0"].numpy()
-        vectors /= (np.linalg.norm(vectors, axis=1, keepdims=True) + epsilon)
-        return vectors
+        vectors = self.__embedding_model(tf.constant(corpus))["output_0"]
+        vectors = tf.linalg.l2_normalize(vectors, axis=-1)
+        return vectors.numpy()
 
     def predict(self, text):
         corpus = [' '.join(clean_and_split(text))]

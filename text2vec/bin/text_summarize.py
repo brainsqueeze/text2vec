@@ -223,22 +223,18 @@ def compute():
     return responder(results=results, error=200, message="Success")
 
 
-def run_server(port=8008, is_production=True):
+def run_server(port=8008):
     """
     This initializes the Tornado WSGI server to allow for
     asynchronous request handling
     :param port: (int)
-    :param is_production: determines whether the environment is production, turns off reloading (bool, default True)
     """
 
     http_server = HTTPServer(WSGIContainer(app))
     http_server.listen(port)
 
-    parse_command_line()
-
     io_loop = IOLoop.instance()
-    if not is_production:
-        tornado.autoreload.start(check_time=500)
+    tornado.autoreload.start(check_time=500)
     print("Listening to port", port)
 
     try:
@@ -248,4 +244,4 @@ def run_server(port=8008, is_production=True):
 
 
 if __name__ == '__main__':
-    run_server(port=8008, is_production=False)
+    run_server(port=8008)

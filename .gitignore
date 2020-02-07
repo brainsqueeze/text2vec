@@ -4,6 +4,7 @@
 .DS_store
 *.sh
 *.ipynb
+*.dev.yml
 
 # JavaScript configs and dependencies
 **/.eslintrc.json

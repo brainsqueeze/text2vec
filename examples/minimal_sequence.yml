@@ -1,0 +1,16 @@
+training:
+  tokens: 10000
+  max_sequence_length: 512
+  epochs: 100
+  batch_size: 64
+  data:
+    - 
+
+model:
+  name: sequence_test
+  parameters:
+    embedding: 128
+    hidden: 128
+  storage_dir: /path/to/save/model
+  eval_sentences:
+    - ""

@@ -13,20 +13,30 @@ from tensorboard.plugins import projector
 from random import shuffle
 import itertools
 import argparse
+import yaml
 import os
 
 root = os.path.dirname(os.path.abspath(__file__))
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
 
-def load_text(data_path=None, max_length=-1):
+def load_text(data_files=None, max_length=-1):
     """
     Loads the training data from a text file
+    :param data_files: list of absolute paths to training data set files (list)
+    :param max_length: maximum sequence length to allow (int)
     :return: (list)
     """
 
-    path = f"{data_path}/" if data_path is not None else f"{root}/../text2vec/data/"
-    files = [f for f in os.listdir(path) if os.path.isfile(os.path.join(path, f))]
+    files = []
+    if isinstance(data_files, list) and len(data_files) > 0:
+        for f in data_files:
+            if os.path.isfile(f):
+                files.append(f)
+    else:
+        path = f"{root}/../../text2vec/data/"
+        files = [f for f in os.listdir(path) if os.path.isfile(os.path.join(path, f))]
+
     texts = []
 
     for file in files:
@@ -41,20 +51,6 @@ def load_text(data_path=None, max_length=-1):
                         texts.append(line)
 
     return texts
-
-
-def test_val_split(corpus, val_size):
-    """
-    Splits the entire corpus into training and validation sets
-    :param corpus: all training documents (list)
-    :param val_size: number of examples in the validation set (int)
-    :return: training set, validation set (list, list)
-    """
-
-    s = np.random.permutation(range(len(corpus)))
-    cv_set = [corpus[item] for item in s[:val_size]]
-    corpus = [corpus[item] for item in s[val_size:]]
-    return corpus, cv_set
 
 
 def mini_batches(corpus, size):
@@ -75,7 +71,8 @@ def mini_batches(corpus, size):
 
 
 def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, max_allowed_seq=-1,
-          layers=8, batch_size=32, num_epochs=10, data_path=None, model_path=None, use_attention=False):
+          layers=8, batch_size=32, num_epochs=10, data_files=None, model_path=".", use_attention=False,
+          eval_sentences=None):
     """
     Core training algorithm
     :param model_folder: name of the folder to create for the trained model (str)
@@ -86,7 +83,7 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
     :param layers: number of multi-head attention mechanisms for transformer model (int, optional)
     :param batch_size: size of each mini-batch (int, optional)
     :param num_epochs: number of training epochs (int, optional)
-    :param data_path: valid path to the training data (str)
+    :param data_files: list of absolute paths to training data sets (list)
     :param model_path: valid path to where the model will be saved (str)
     :param use_attention: set to True to use the self-attention only model (bool)
     """
@@ -96,10 +93,10 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
         os.mkdir(log_dir)
 
     utils.log("Fetching corpus and transforming to frequency domain")
-    corpus = load_text(data_path=data_path, max_length=max_allowed_seq)
+    corpus = load_text(data_files=data_files, max_length=max_allowed_seq)
 
     utils.log("Splitting the training and validation sets")
-    train_corpus, cv_corpus = test_val_split(corpus=corpus, val_size=64)
+    train_corpus, cv_corpus = utils.test_val_split(corpus=corpus, val_size=64)
     cv_tokens = [' '.join(str_utils.clean_and_split(text)) for text in cv_corpus]
 
     utils.log("Fitting embedding lookup and transforming the training and cross-validation sets")
@@ -154,10 +151,10 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
         train_loss(loss_val)  # log the loss value to TensorBoard
 
     model_file_name = None
-    test_sentences = [
-        "The movie was great!",
-        "The movie was terrible."
-    ]
+    if isinstance(eval_sentences, list) and len(eval_sentences) > 1:
+        test_sentences = eval_sentences
+    else:
+        test_sentences = ["The movie was great!", "The movie was terrible."]
     test_tokens = [' '.join(str_utils.clean_and_split(text)) for text in test_sentences]
 
     summary_writer_train = tf.summary.create_file_writer(log_dir + "/training")
@@ -230,51 +227,35 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
 
 def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument("run", choices=["train", "infer"], help="Run type.")
-    parser.add_argument("model_name", type=str, help="Folder name in which to store model.")
-    parser.add_argument("--tokens", type=int, help="Set the number of tokens to use.", default=10000)
-    parser.add_argument("--embedding", type=int, help="Set the dimensionality of the word embeddings.", default=256)
-    parser.add_argument("--hidden", type=int, help="Number of hidden model dimensions.", default=128)
-    parser.add_argument("--layers", type=int, help="Number of self-attention layers.", default=8)
-    parser.add_argument("--mb_size", type=int, help="Number of examples in each mini-batch.", default=32)
-    parser.add_argument("--epochs", type=int, help="Number of epochs to run.", default=100000)
+    parser.add_argument("--run", choices=["train", "infer"], help="Run type.", required=True)
     parser.add_argument("--attention", action='store_true', help="Set to use attention transformer model.")
-    parser.add_argument("--max_len", type=int, help="Maximum allowed sequence length", default=-1)
-    parser.add_argument("--data_path", type=str, help="Path to the training data file(s).")
-    parser.add_argument("--model_path", type=str, help="Path to place the saved model.")
-
+    parser.add_argument("--yaml_config", type=str, help="Path to a valid training config YAML file.", required=True)
     args = parser.parse_args()
 
-    if args.run is None or args.model_name is None:
-        print(args.print_help())
-        exit(2)
-
-    if args.data_path and not os.path.isdir(args.data_path):
-        print(f"{args.data_path} is not a valid directory")
-        exit(2)
-
-    if args.model_path and not os.path.isdir(args.model_path):
-        print(f"{args.model_path} is not a valid directory")
-        exit(2)
+    config = yaml.safe_load(open(args.yaml_config, 'r'))
+    training_config = config.get("training", {})
+    model_config = config.get("model", {})
+    model_params = model_config.get("parameters", {})
 
     if args.run == "train":
         train(
-            model_folder=args.model_name,
-            num_tokens=args.tokens,
-            max_allowed_seq=args.max_len,
-            embedding_size=args.embedding,
-            num_hidden=args.hidden,
-            layers=args.layers,
-            batch_size=args.mb_size,
-            num_epochs=args.epochs,
-            use_attention=bool(args.attention),
-            data_path=args.data_path,
-            model_path=args.model_path
+            model_folder=model_config["name"],
+            use_attention=args.attention,
+            num_tokens=training_config.get("tokens", 10000),
+            max_allowed_seq=training_config.get("max_sequence_length", 512),
+            embedding_size=model_params.get("embedding", 128),
+            num_hidden=model_params.get("hidden", 128),
+            layers=model_params.get("layers", 8),
+            batch_size=training_config.get("batch_size", 32),
+            num_epochs=training_config.get("epochs", 20),
+            data_files=training_config.get("data_files"),
+            model_path=model_config.get("storage_dir", "."),
+            eval_sentences=training_config.get("eval_sentences")
         )
     elif args.run == "infer":
-        os.environ["MODEL_PATH"] = args.model_name
+        os.environ["MODEL_PATH"] = f'{model_config.get("storage_dir", ".")}/{model_config["name"]}'
         from .text_summarize import run_server
-        run_server(port=8008, is_production=False)
+        run_server(port=8008)
     else:
         raise NotImplementedError("Only training and inferencing is enabled right now.")
     return

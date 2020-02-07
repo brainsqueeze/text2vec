@@ -63,7 +63,7 @@ context-vectors.
 This is an adapted bi-directional LSTM encoder-decoder model with 
 a self-attention mechanism learned from the encoding steps. The 
 context-vectors are used to project the resulting decoded sequences 
-before 
+before computing logits.
  
 
 ## Training
@@ -73,11 +73,41 @@ program in [[2](https://arxiv.org/abs/1706.03762)].
 
 Training the LSTM model can be initiated with
 ```bash
-python -m bin.main train text_embedding --embedding 128 --hidden 128 --attention_size 64 --mb_size 32 --num_mb 40 --epochs 50
+text2vec_main --run=train --yaml_config=/path/to/config.yml
 ```
+The training configuration YAML for attention models must look like
+```yaml
+training:
+  tokens: 10000
+  max_sequence_length: 512
+  epochs: 100
+  batch_size: 64
+
+model:
+  name: transformer_test
+  parameters:
+    embedding: 128
+    layers: 8
+  storage_dir: /path/to/save/model
+```
+The `parameters` for recurrent models must include at least 
+`embedding` and `hidden`, which referes to the dimensionality of the hidden LSTM layer. The `training` section of the YAML file can also include user-defined sentences to use as a context-angle evaluation set. This can look like
+```yaml
+eval_sentences:
+  - The movie was great!
+  - The movie was terrible.
+```
+It can also include a `data` tag which is a list of absolute file paths for custom training data sets. This can look like
+```yaml
+data:
+  - ~/path/to/data/set1.txt
+  - ~/path/to/data/set2.txt
+  ...
+```
+
 Likewise, the transformer model can be trained with 
 ```bash
-python -m bin.main train text_embedding --embedding 128 --mb_size 32 --num_mb 40 --epochs 50 --attention
+text2vec_main --run=train --attention --yaml_config=/path/to/config.yml
 ```
 
 This command will read a text training set in from [data](text2vec/data) 
@@ -102,29 +132,6 @@ it will fall back to the CPU for training and inferencing.
 To train a model with a custom data set, simply replace the 
 data set(s) in [/data](text2vec/data) with your own.
 
-#### Generalized cosine loss
-
-A generalized cosine distance loss function, which is convex over 
-the domain in this problem, is available for the LSMT-seq2seq model. 
-The loss takes the functional form of
-
-![equation](http://latex.codecogs.com/svg.latex?\mathcal{L}_{mb}%20=%20\sum_{j=1}^{N_{mb}}%20\sum_{i=1}^{L_j}%20\frac{1}{L_j}%20\left(1%20-%20\textbf{v}_i^{\mathcal{I}_j}%20\cdot%20\textbf{v}_i^{\mathcal{O}_j}%20\right%20))
-
-where ![equation](http://latex.codecogs.com/svg.latex?\textbf{v}_i^{\mathcal{I}_j}) 
-is the L2-normalized, d-dimensional input vector of the i-th sequence 
-position of the j-th example in the mini-batch; 
-![equation](http://latex.codecogs.com/svg.latex?\textbf{v}_i^{\mathcal{O}_j}) 
-is the equivalent output from the decoding layers. 
-![equation](http://latex.codecogs.com/svg.latex?L_j) is the sequence 
-length of the j-th example. Since the model is an auto-morphism, then 
-the loss function should approach 0 as training is allowed to continue.
-
-It should be noted that this loss function will ultimately yield a worse 
-model than the same model trained on the usual log-loss when word-embeddings 
-are being learned. This is due to the loss function effectively teaching the
-embedding matrix to map words to a single point. It has not been tested whether 
-using pre-trained embeddings could help to remedy this behavior.
-
 ## Inference Demo
 
 Once a model is fully trained then a demo API can be run, along with a small 
@@ -134,10 +141,9 @@ inferred embedded context vectors.
 
 To start the model server simply run 
 ```bash
-python -m bin.main infer text_embedding
+text2vec_main --run=infer --yaml_config=/path/to/config.yml
 ```
-where `text_embedding` should be replaced with the name of your model's log 
-directory.  A demonstration webpage is included in [demo](demo) at 
+A demonstration webpage is included in [demo](demo) at 
 [context.html](demo/context.html).
 
 ## References
