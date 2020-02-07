@@ -3,6 +3,7 @@
 Models for contextual embedding of arbitrary texts.
 
 ## Setup
+---
 
 To install the core components as an import-able Python library
 simply run
@@ -14,6 +15,7 @@ where `device` is either `cpu` or `gpu`, depending on which flavor
 of TensorFlow one wishes to install.
 
 ## Motivation
+---
 
 Word embedding models have been very beneficial to natural 
 language processing. The technique is able to distill semantic 
@@ -40,6 +42,7 @@ mechanism, but this method was chosen intentionally to be able to
 leverage the attention vector as the embedding output.
 
 ### Transformer model
+---
 
 This is a tensor-to-tensor model adapted from the work in 
 [Attention Is All You Need](https://arxiv.org/abs/1706.03762). 
@@ -67,6 +70,7 @@ before computing logits.
  
 
 ## Training
+---
 
 Both models are trained using Adam SGD with the learning-rate decay 
 program in [[2](https://arxiv.org/abs/1706.03762)].
@@ -110,9 +114,6 @@ Likewise, the transformer model can be trained with
 text2vec_main --run=train --attention --yaml_config=/path/to/config.yml
 ```
 
-This command will read a text training set in from [data](text2vec/data) 
-and takes the top 10,000 most frequent tokens. It them trains, and outputs 
-the model into a folder that is dynamically created named `text_embedding`. 
 To view the output of training you can then run
 ```bash
 tensorboard --logdir text_embedding
@@ -121,12 +122,14 @@ tensorboard --logdir text_embedding
 If you have CUDA and cuDNN installed you can run 
 `pip install -r requirements-gpu.txt`. 
 The GPU will automatically be detected and used if present, otherwise 
-it will fall back to the CPU for training and inferencing. 
+it will fall back to the CPU for training and inferencing.
 
-To train a model with a custom data set, simply replace the 
-data set(s) in [/data](text2vec/data) with your own.
+### Mutual contextual orthogonality
+
+To impose quasi-mutual orthogonality on the learned context vectors simply add the `--orthogonal` flag to the training command. This will add a loss term that can be thought of as a Lagrange multiplier where the constraint is self-alignment of the context vectors, and orthogonality between non-self vectors. The aim is not to impose orthogonality between all text inputs that are not the same, but rather to coerce the model to learn significantly different encodings for different contextual inputs.
 
 ## Inference Demo
+---
 
 Once a model is fully trained then a demo API can be run, along with a small 
 UI to interact with the REST API. This demo attempts to use the trained model 
@@ -141,6 +144,7 @@ A demonstration webpage is included in [demo](demo) at
 [context.html](demo/context.html).
 
 ## References
+---
 
 1. D. Bahdanau, K. Cho, Y. Bengio [https://arxiv.org/abs/1409.0473](https://arxiv.org/abs/1409.0473)
 2. A. Vaswani, N. Shazeer, N. Parmar, J. Uszkoreit, L. Jones, A. N. Gomez, L. Kaiser, I. Polosukhin [https://arxiv.org/abs/1706.03762](https://arxiv.org/abs/1706.03762)
