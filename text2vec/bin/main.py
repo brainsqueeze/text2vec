@@ -130,7 +130,8 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
     else:
         model = EncodingModel(token_hash=hash_map, num_hidden=num_hidden, recurrent=True, **params)
 
-    learning_rate = RampUpDecaySchedule(embedding_size=dims, warmup_steps=4000)
+    warmup_steps = max(len(train_corpus) // batch_size, 4000)
+    learning_rate = RampUpDecaySchedule(embedding_size=dims, warmup_steps=warmup_steps)
     optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
     train_loss = tf.keras.metrics.Mean('train-loss', dtype=tf.float32)
 
@@ -207,13 +208,18 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
 
         vectors = model.embed(test_tokens)
         angles = utils.compute_angles(vectors.numpy())
-        for i, j in itertools.combinations(range(len(test_sentences)), r=2):
-            print(f"The angle between '{test_sentences[i]}' and '{test_sentences[j]}' is {angles[i, j]} degrees")
 
         cv_loss = compute_loss(cv_tokens)
         with summary_writer_dev.as_default():
             tf.summary.scalar('loss', cv_loss.numpy(), step=step)
-            tf.summary.scalar('similarity angle', angles[0, 1], step=step)
+
+            for i, j in itertools.combinations(range(len(test_sentences)), r=2):
+                angle = angles[i, j]
+                print(f"The angle between '{test_sentences[i]}' and '{test_sentences[j]}' is {angle} degrees")
+
+                # log the angle to tensorboard
+                desc = f"'{test_sentences[i]}' : '{test_sentences[j]}'"
+                tf.summary.scalar('similarity angle', angle, step=step, description=desc)
             summary_writer_dev.flush()
         model_file_name = checkpoint_manager.save()
 
