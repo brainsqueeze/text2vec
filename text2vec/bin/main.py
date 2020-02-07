@@ -35,12 +35,12 @@ def load_text(data_files=None, max_length=-1):
                 files.append(f)
     else:
         path = f"{root}/../../text2vec/data/"
-        files = [f for f in os.listdir(path) if os.path.isfile(os.path.join(path, f))]
+        files = [os.path.join(path, f) for f in os.listdir(path) if os.path.isfile(os.path.join(path, f))]
 
     texts = []
 
     for file in files:
-        with open(path + file, "r", encoding="utf8", errors="replace") as f:
+        with open(file, "r", encoding="utf8", errors="replace") as f:
             for line in f:
                 line = line.strip()
                 if line != '':
