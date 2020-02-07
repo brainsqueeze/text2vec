@@ -10,7 +10,8 @@ setup(
     url="https://github.com/brainsqueeze/text2vec",
     license="BSD 2-Clause License",
     install_requires=[
-        "numpy"
+        "numpy",
+        "pyyaml"
     ],
     extras_require=dict(
         gpu="tensorflow-gpu>=2.0.0",

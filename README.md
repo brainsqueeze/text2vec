@@ -103,7 +103,7 @@ eval_sentences:
 ```
 It can also include a `data` tag which is a list of absolute file paths for custom training data sets. This can look like
 ```yaml
-data:
+data_files:
   - ~/path/to/data/set1.txt
   - ~/path/to/data/set2.txt
   ...
