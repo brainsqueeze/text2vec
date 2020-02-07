@@ -142,9 +142,9 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
             num_labels=model.embed_layer.num_labels,
             smoothing=False
         )
+
         if orthogonal_cost:
-            orthogonal_cost = vector_cost(context_vectors=vectors)
-            return loss_val + orthogonal_cost
+            return loss_val + vector_cost(context_vectors=vectors)
         return loss_val
 
     @tf.function(input_signature=[tf.TensorSpec(shape=(None,), dtype=tf.string)])
