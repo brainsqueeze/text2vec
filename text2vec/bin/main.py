@@ -213,13 +213,13 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
         with summary_writer_dev.as_default():
             tf.summary.scalar('loss', cv_loss.numpy(), step=step)
 
-            for i, j in itertools.combinations(range(len(test_sentences)), r=2):
+            for idx, (i, j) in enumerate(itertools.combinations(range(len(test_sentences)), r=2), start=1):
                 angle = angles[i, j]
                 print(f"The angle between '{test_sentences[i]}' and '{test_sentences[j]}' is {angle} degrees")
 
                 # log the angle to tensorboard
                 desc = f"'{test_sentences[i]}' : '{test_sentences[j]}'"
-                tf.summary.scalar('similarity angle', angle, step=step, description=desc)
+                tf.summary.scalar(f'similarity angle ({idx})', angle, step=step, description=desc)
             summary_writer_dev.flush()
         model_file_name = checkpoint_manager.save()
 
