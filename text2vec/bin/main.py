@@ -219,7 +219,7 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
 
                 # log the angle to tensorboard
                 desc = f"'{test_sentences[i]}' : '{test_sentences[j]}'"
-                tf.summary.scalar(f'similarity angle ({idx})', angle, step=step, description=desc)
+                tf.summary.scalar(f'similarity-angle/{idx}', angle, step=step, description=desc)
             summary_writer_dev.flush()
         model_file_name = checkpoint_manager.save()
 
