@@ -1,4 +1,4 @@
-from text2vec.models.text_condenser import TextHandler, Embedder
+from .serving_tools import Embedder
 import numpy as np
 
 import time
@@ -6,16 +6,15 @@ import json
 
 from flask import Flask, request, Response
 from flask_cors import cross_origin
-import tornado
+
+from tornado.httpserver import HTTPServer
 from tornado.wsgi import WSGIContainer
 from tornado.ioloop import IOLoop
-from tornado.httpserver import HTTPServer
 import tornado.autoreload
-from tornado.options import parse_command_line
+import tornado
 
 app = Flask(__name__)
-th = TextHandler()
-e = Embedder()
+model = Embedder()
 
 
 def responder(results, error, message):
@@ -40,21 +39,10 @@ def cosine_similarity_sort(net_vector, embedding_matrix, attend=False):
     :return: (sorted order of documents, cosine similarity scores)
     """
 
-    assert net_vector.shape[0] == 1
-    assert net_vector.shape[-1] == embedding_matrix.shape[-1]
-
-    if attend:
-        embedding_matrix = attention(embedding_matrix, embedding_matrix, embedding_matrix)
-
-    net_vector /= np.linalg.norm(net_vector, axis=1, keepdims=True)
-    embedding_matrix /= np.linalg.norm(embedding_matrix, axis=1, keepdims=True)
-
-    net_vector[np.isnan(net_vector)] = 0
-    embedding_matrix[np.isnan(embedding_matrix)] = 0
-
-    similarity = np.dot(net_vector, embedding_matrix.T)
+    similarity = np.dot(embedding_matrix, net_vector)
     similarity = np.clip(similarity, -1, 1)
-    sort = np.argsort(1 - similarity, axis=1)[0]
+    # sort = np.argsort(1 - similarity)
+    sort = np.argsort(similarity - 1)
 
     return sort, similarity.flatten()[sort]
 
@@ -82,9 +70,11 @@ def choose(sentences, scores, embeddings):
         return sentences, scores, embeddings
 
     angles = angle_from_cosine(scores)
-    likelihood = np.exp(-angles) / np.exp(-angles).sum()
-    threshold = likelihood.mean() + likelihood.std()
-    cut = likelihood >= threshold
+    # likelihood = np.exp(-angles) / np.exp(-angles).sum()
+    # threshold = likelihood.mean() + likelihood.std()
+    # cut = likelihood >= threshold
+    # cut = angles < 45
+    cut = angles < angles.mean()
     return sentences[cut], scores[cut], embeddings[cut]
 
 
@@ -128,53 +118,6 @@ def softmax(logits):
     return soft
 
 
-def attention(queries, keys, values, mask_future=True):
-    """
-    Computes the dot-product attention, future masking is turned
-    on by default
-    :param queries: dimensions (C, D) (ndarray)
-    :param keys: dimensions (N, D) (ndarray)
-    :param values: dimensions (N, M) (ndarray)
-    :param mask_future: (bool)
-    :return: (ndarray)
-    """
-
-    numerator = np.dot(queries, keys.T)
-    denominator = np.sqrt(keys.shape[-1])
-
-    if mask_future:
-        upper = (1 + 1e9) * np.triu(np.ones_like(numerator), k=1)  # strictly upper triangle, no diagonal
-        mask = 1 - upper
-        numerator *= mask
-
-    scores = numerator / denominator
-    scores = softmax(scores)
-    return np.dot(scores, values)
-
-
-def normal(vectors):
-    """
-    Computes the normal to a vector bundle
-    :param vectors: dimensions (N, C) (ndarray)
-    :return: (C) (ndarray)
-    """
-
-    n = np.sum(vectors, axis=0)
-    n /= np.linalg.norm(n, axis=0)
-    return n
-
-
-def attended_norm(vectors):
-    """
-    Runs self-attention before computing the normal vector
-    :param vectors: dimensions (N, C) (ndarray)
-    :return: (C) (ndarray)
-    """
-
-    vectors = attention(queries=vectors, keys=vectors, values=vectors)
-    return normal(vectors)
-
-
 @app.route('/condense', methods=['POST', 'GET'])
 @cross_origin(origins=['*'], allow_headers=['Content-Type', 'Authorization'])
 def compute():
@@ -199,20 +142,9 @@ def compute():
         return responder(results=results, error=400, message="No text provided")
 
     # get the embedding vectors for each sentence in the document
-    sentences = [
-        sentence for sent in th.split_paragraphs(body)
-        for sentence in th.split_sentences(sent)
-        if len(sentence.split()) > 3
-    ]
-    s_embedded = e.embed(sentences)
+    sentences, vectors, doc_vector = model.embed(body)
+    top_sentences, top_scores, _ = text_pass_filter(texts=sentences, texts_embeddings=vectors, net_vector=doc_vector)
 
-    # compute global normal vector
-    global_norm = attended_norm(s_embedded)[None, :]
-    top_sentences, top_scores, _ = text_pass_filter(
-        texts=sentences,
-        texts_embeddings=s_embedded,
-        net_vector=global_norm
-    )
     results = {
         "elapsed_time": time.time() - st,
         "data": [{
