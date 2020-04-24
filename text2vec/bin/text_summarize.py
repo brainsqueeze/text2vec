@@ -70,11 +70,7 @@ def choose(sentences, scores, embeddings):
         return sentences, scores, embeddings
 
     angles = angle_from_cosine(scores)
-    # likelihood = np.exp(-angles) / np.exp(-angles).sum()
-    # threshold = likelihood.mean() + likelihood.std()
-    # cut = likelihood >= threshold
-    # cut = angles < 45
-    cut = angles < angles.mean()
+    cut = angles < angles.mean() - angles.std()
     return sentences[cut], scores[cut], embeddings[cut]
 
 

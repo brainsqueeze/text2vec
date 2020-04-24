@@ -1,6 +1,6 @@
 from text2vec.preprocessing import clean_and_split
 import tensorflow as tf
-import spacy
+from nltk.tokenize import sent_tokenize
 import re
 import os
 
@@ -10,14 +10,6 @@ class Embedder(object):
     def __init__(self):
         log_dir = f"{os.environ['MODEL_PATH']}/frozen/1"
         self.__model = tf.saved_model.load(log_dir)
-
-        try:
-            self.nlp = spacy.load("en_core_web_sm")
-        except OSError:
-            from subprocess import call
-
-            call(["python", "-m", "spacy", "download", "en_core_web_sm"])
-            self.nlp = spacy.load("en_core_web_sm")
 
     @staticmethod
     def normalize_text(text):
@@ -41,8 +33,8 @@ class Embedder(object):
         return text.strip()
 
     def __get_sentences(self, text):
-        text = self.normalize_text(text)
-        data = [[sent.text, ' '.join(clean_and_split(sent.text))] for sent in self.nlp(text).sents]
+        data = [(sent, ' '.join(clean_and_split(self.normalize_text(sent)))) for sent in sent_tokenize(text)]
+        data = [(orig, clean) for orig, clean in data if len(clean.split()) >= 5]
         original, clean = map(list, zip(*data))
         return original, clean
 

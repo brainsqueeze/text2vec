@@ -243,7 +243,13 @@ def main():
     parser.add_argument("--yaml_config", type=str, help="Path to a valid training config YAML file.", required=True)
     args = parser.parse_args()
 
-    config = yaml.safe_load(open(args.yaml_config, 'r'))
+    config_path = args.yaml_config
+    if config_path.startswith("${HOME}"):
+        config_path = config_path.replace('${HOME}', os.getenv('HOME'))
+    elif config_path.startswith("$HOME"):
+        config_path = config_path.replace('$HOME', os.getenv('HOME'))
+
+    config = yaml.safe_load(open(config_path, 'r'))
     training_config = config.get("training", {})
     model_config = config.get("model", {})
     model_params = model_config.get("parameters", {})
