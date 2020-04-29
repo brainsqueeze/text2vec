@@ -3,7 +3,7 @@ import re
 
 import tensorflow as tf
 
-TOKENIZER = re.compile(r"\w+\'\w*|\w+|\$\d+|\d+|[,!?;.]")
+TOKENIZER = re.compile(r"<\w+/>|\w+\'\w*|\w+|\$\d+|\d+|[,!?;.]")
 
 
 def clean_and_split(text, compiled_pattern=TOKENIZER):
