@@ -23,20 +23,31 @@ def get_top_tokens(corpus, n_top=1000):
     """
     Builds the token mapping which is used to initialize the word embeddings in the model.
     Get the most frequent terms which appear in the training corpus.
-    :param corpus: list of strings (list)
+    :param corpus: dataset of strings (tf.data.Dataset)
     :param n_top: the number of most frequent tokens (int, optional, default=1000)
     :return: token->integer lookup, maximum sequence length (dict, int)
     """
 
-    corpus = [clean_and_split(text) for text in corpus]
-    max_sequence_length = max(map(len, corpus))
-    lookup = Counter([token for sequence in corpus for token in sequence])
-    lookup = lookup.most_common(n_top)
+    lookup = Counter()
+    max_sequence_length, data_set_size = 0, 0
 
-    hash_map = {key: idx + 2 for idx, (key, value) in enumerate(lookup)}
+    assert isinstance(corpus, tf.data.Dataset)
+    corpus = corpus.map(lambda x: tf.strings.split(x, sep=''), num_parallel_calls=tf.data.experimental.AUTOTUNE)
+    for text in corpus.take(10000):
+        text = text.numpy()
+        lookup.update(text)
+
+        if len(text) > max_sequence_length:
+            max_sequence_length = len(text)
+        data_set_size += 1
+
+    hash_map = {
+        key.decode('utf8') if isinstance(key, bytes) else key: idx + 2
+        for idx, (key, value) in enumerate(lookup.most_common(n_top))
+    }
     hash_map["<s>"] = 0
     hash_map["</s>"] = 1
-    return hash_map, max_sequence_length
+    return hash_map, max_sequence_length, data_set_size
 
 
 def normalize_text(text):

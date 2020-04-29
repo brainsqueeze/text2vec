@@ -11,6 +11,7 @@ import numpy as np
 from tensorboard.plugins import projector
 
 from random import shuffle
+from glob import glob
 import itertools
 import argparse
 import yaml
@@ -18,6 +19,13 @@ import os
 
 root = os.path.dirname(os.path.abspath(__file__))
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
+
+
+def check_valid(text, max_length):
+    sequence_lengths = tf.shape(tf.strings.split(text, sep=''))
+    if max_length < -1:
+        return sequence_lengths is not None
+    return sequence_lengths is not None and sequence_lengths[0] <= max_length
 
 
 def load_text(data_files=None, max_length=-1):
@@ -31,26 +39,18 @@ def load_text(data_files=None, max_length=-1):
     files = []
     if isinstance(data_files, list) and len(data_files) > 0:
         for f in data_files:
+            if '*' in f:
+                files.extend(glob(f))
+                continue
             if os.path.isfile(f):
                 files.append(f)
     else:
         path = f"{root}/../../text2vec/data/"
         files = [os.path.join(path, f) for f in os.listdir(path) if os.path.isfile(os.path.join(path, f))]
 
-    texts = []
-
-    for file in files:
-        with open(file, "r", encoding="utf8", errors="replace") as f:
-            for line in f:
-                line = line.strip()
-                if line != '':
-                    if max_length > 0:
-                        if len(line.split()) <= max_length:
-                            texts.append(line)
-                    else:
-                        texts.append(line)
-
-    return texts
+    texts = tf.data.TextLineDataset(files)
+    texts = texts.map(lambda x: tf.strings.strip(x), num_parallel_calls=tf.data.experimental.AUTOTUNE)
+    return texts.filter(lambda x: check_valid(x, max_length))
 
 
 def mini_batches(corpus, size):
@@ -96,13 +96,10 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
 
     utils.log("Fetching corpus and transforming to frequency domain")
     corpus = load_text(data_files=data_files, max_length=max_allowed_seq)
-
-    utils.log("Splitting the training and validation sets")
-    train_corpus, cv_corpus = utils.test_val_split(corpus=corpus, val_size=64)
-    cv_tokens = [' '.join(str_utils.clean_and_split(text)) for text in cv_corpus]
+    assert isinstance(corpus, tf.data.Dataset)
 
     utils.log("Fitting embedding lookup and transforming the training and cross-validation sets")
-    hash_map, max_seq_len = str_utils.get_top_tokens(corpus, n_top=num_tokens)
+    hash_map, max_seq_len, train_set_size = str_utils.get_top_tokens(corpus, n_top=num_tokens)
     utils.log(f"Max sequence length: {max_seq_len}")
 
     with open(log_dir + "/metadata.tsv", "w") as tsv:
@@ -111,7 +108,7 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
         tsv.write("<unk>\n")
 
     utils.log("Building computation graph")
-    log_step = len(train_corpus[::batch_size]) // 10
+    log_step = (train_set_size // batch_size) // 10
     dims = embedding_size
 
     # GPU config
