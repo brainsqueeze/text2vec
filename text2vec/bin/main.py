@@ -181,7 +181,7 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
         except ValueError:
             print("Corpus not batched")
         corpus = corpus.shuffle(train_set_size)
-        corpus = corpus.batch(batch_size)
+        corpus = corpus.batch(batch_size).prefetch(10)  # pre-fetch 10 batches for queuing
 
         print(f"\t Epoch: {epoch + 1}")
         i = 1
