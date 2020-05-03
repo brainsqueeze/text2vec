@@ -90,6 +90,11 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
     :param orthogonal: set to True to add a cost to mutually parallel context vector (bool)
     """
 
+    # GPU config
+    for gpu in tf.config.experimental.list_physical_devices('GPU'):
+        tf.config.experimental.set_memory_growth(gpu, True)
+    tf.config.set_soft_device_placement(True)
+
     log_dir = f"{model_path}/{model_folder}" if model_path else f"{root}/../../text2vec/{model_folder}"
     if not os.path.exists(log_dir):
         os.mkdir(log_dir)
@@ -111,11 +116,6 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
     log_step = (train_set_size // batch_size) // 10
     dims = embedding_size
 
-    # GPU config
-    for gpu in tf.config.experimental.list_physical_devices('GPU'):
-        tf.config.experimental.set_memory_growth(gpu, True)
-    tf.config.set_soft_device_placement(True)
-
     params = dict(
         max_sequence_len=max_seq_len,
         embedding_size=dims,
@@ -127,7 +127,7 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
     else:
         model = EncodingModel(token_hash=hash_map, num_hidden=num_hidden, recurrent=True, **params)
 
-    warmup_steps = max(len(train_corpus) // batch_size, 4000)
+    warmup_steps = max(train_set_size // batch_size, 4000)
     learning_rate = RampUpDecaySchedule(embedding_size=dims, warmup_steps=warmup_steps)
     optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
     train_loss = tf.keras.metrics.Mean('train-loss', dtype=tf.float32)
@@ -176,14 +176,18 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
 
     step = 1
     for epoch in range(num_epochs):
+        try:
+            corpus = corpus.unbatch()
+        except ValueError:
+            print("Corpus not batched")
+        corpus = corpus.shuffle(train_set_size)
+        corpus = corpus.batch(batch_size)
+
         print(f"\t Epoch: {epoch + 1}")
         i = 1
         train_loss.reset_states()
 
-        for x in mini_batches(train_corpus, size=batch_size):
-            if len(x) == 0:
-                continue
-
+        for x in corpus:
             if step == 1:
                 tf.summary.trace_on(graph=True, profiler=False)
 
@@ -206,10 +210,7 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
         vectors = model.embed(test_tokens)
         angles = utils.compute_angles(vectors.numpy())
 
-        cv_loss = compute_loss(cv_tokens)
         with summary_writer_dev.as_default():
-            tf.summary.scalar('loss', cv_loss.numpy(), step=step)
-
             for idx, (i, j) in enumerate(itertools.combinations(range(len(test_sentences)), r=2), start=1):
                 angle = angles[i, j]
                 print(f"The angle between '{test_sentences[i]}' and '{test_sentences[j]}' is {angle} degrees")
@@ -227,8 +228,8 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
     utils.log("Reloading frozen model and comparing output to in-memory model")
     test = tf.saved_model.load(f"{log_dir}/frozen/1")
     test_model = test.signatures["serving_default"]
-    test_output = test_model(tf.constant(cv_tokens))["output_0"].numpy()
-    utils.log(f"Outputs on CV set are approximately the same?: {np.allclose(test_output, model(cv_tokens).numpy())}")
+    test_output = test_model(tf.constant(test_tokens))["output_0"].numpy()
+    utils.log(f"Outputs on CV set are approximately the same?: {np.allclose(test_output, model(test_tokens).numpy())}")
     return model_file_name
 
 
