@@ -1,8 +1,8 @@
 import numpy as np
 
 
-def log(message):
-    print(f"[INFO] {message}")
+def log(message, **kwargs):
+    print(f"[INFO] {message}", flush=True, end=kwargs.get("end", "\n"))
 
 
 def test_val_split(corpus, val_size):

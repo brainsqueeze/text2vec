@@ -1,8 +1,6 @@
-from text2vec.preprocessing import utils as str_utils
-from text2vec.optimizer_tools import RampUpDecaySchedule
-from text2vec.models import TextInput
-from text2vec.models import TransformerEncoder, TransformerDecoder, RecurrentEncoder, RecurrentDecoder
 from text2vec.training_tools import EncodingModel, sequence_cost, vector_cost
+from text2vec.optimizer_tools import RampUpDecaySchedule
+from text2vec.preprocessing import utils as str_utils
 from . import utils
 
 import tensorflow as tf
@@ -22,6 +20,13 @@ os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
 
 def check_valid(text, max_length):
+    """
+    Validates a sentence string for inclusion in the training set
+    :param text: input string tensor (tf.string)
+    :param max_length: maximum sequence length (int)
+    :return: (bool)
+    """
+
     sequence_lengths = tf.shape(tf.strings.split(text, sep=''))
     if max_length < -1:
         return sequence_lengths is not None
@@ -53,23 +58,6 @@ def load_text(data_files=None, max_length=-1):
     return texts.filter(lambda x: check_valid(x, max_length))
 
 
-def mini_batches(corpus, size):
-    """
-    Mini-batch generator for feeding training examples into the model
-    :param corpus: training set of sequence-encoded data (list)
-    :param size: size of each mini-batch (int)
-    :return: mini-batch of text data (list of strings)
-    """
-
-    shuffle(corpus)
-
-    for i in range(0, len(corpus) + size, size):
-        mini_batch = corpus[i: i + size]
-        if not mini_batch:
-            continue
-        yield [' '.join(str_utils.clean_and_split(text)) for text in mini_batch]
-
-
 def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, max_allowed_seq=-1,
           layers=8, batch_size=32, num_epochs=10, data_files=None, model_path=".", use_attention=False,
           eval_sentences=None, orthogonal_cost=False):
@@ -99,13 +87,13 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
     if not os.path.exists(log_dir):
         os.mkdir(log_dir)
 
-    utils.log("Fetching corpus and transforming to frequency domain")
+    utils.log("Fetching corpus and creating data pipeline")
     corpus = load_text(data_files=data_files, max_length=max_allowed_seq)
     assert isinstance(corpus, tf.data.Dataset)
 
-    utils.log("Fitting embedding lookup and transforming the training and cross-validation sets")
+    utils.log("Fitting embedding lookup", end="...")
     hash_map, max_seq_len, train_set_size = str_utils.get_top_tokens(corpus, n_top=num_tokens)
-    utils.log(f"Max sequence length: {max_seq_len}")
+    print(f"{train_set_size} sentences. max sequence length: {max_seq_len}")
 
     with open(log_dir + "/metadata.tsv", "w") as tsv:
         for token, _ in sorted(hash_map.items(), key=lambda s: s[-1]):
@@ -113,7 +101,7 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
         tsv.write("<unk>\n")
 
     utils.log("Building computation graph")
-    log_step = (train_set_size // batch_size) // 10
+    log_step = (train_set_size // batch_size) // 25
     dims = embedding_size
 
     params = dict(
