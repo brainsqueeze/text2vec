@@ -1,6 +1,7 @@
 from text2vec.training_tools import EncodingModel, sequence_cost, vector_cost
 from text2vec.optimizer_tools import RampUpDecaySchedule
-from text2vec.preprocessing import utils as str_utils
+from text2vec.preprocessing.text import clean_and_split
+from text2vec.preprocessing import get_top_tokens
 from . import utils
 
 import tensorflow as tf
@@ -92,7 +93,7 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
     assert isinstance(corpus, tf.data.Dataset)
 
     utils.log("Fitting embedding lookup", end="...")
-    hash_map, max_seq_len, train_set_size = str_utils.get_top_tokens(corpus, n_top=num_tokens)
+    hash_map, max_seq_len, train_set_size = get_top_tokens(corpus, n_top=num_tokens)
     print(f"{train_set_size} sentences. max sequence length: {max_seq_len}")
 
     with open(log_dir + "/metadata.tsv", "w") as tsv:
@@ -145,7 +146,7 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
         test_sentences = eval_sentences
     else:
         test_sentences = ["The movie was great!", "The movie was terrible."]
-    test_tokens = [' '.join(str_utils.clean_and_split(text)) for text in test_sentences]
+    test_tokens = [' '.join(clean_and_split(text)) for text in test_sentences]
 
     summary_writer_train = tf.summary.create_file_writer(log_dir + "/training")
     summary_writer_dev = tf.summary.create_file_writer(log_dir + "/validation")

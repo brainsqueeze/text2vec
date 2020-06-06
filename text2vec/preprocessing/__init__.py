@@ -1,1 +1,2 @@
-from text2vec.preprocessing.utils import clean_and_split
+from text2vec.preprocessing.utils import get_top_tokens
+from text2vec.preprocessing import text
