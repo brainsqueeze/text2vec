@@ -25,10 +25,8 @@ def get_top_tokens(corpus, n_top=1000):
             max_sequence_length = max_batch_seq_len
         data_set_size += int(tokens_list.nrows())
 
-    hash_map = {
-        key.decode('utf8') if isinstance(key, bytes) else key: idx + 2
-        for idx, (key, value) in enumerate(lookup.most_common(n_top))
-    }
-    hash_map["<s>"] = 0
-    hash_map["</s>"] = 1
+    # tensorflow converts strings to bytes, let's maintain that (no decoding)
+    hash_map = {key: idx + 2 for idx, (key, value) in enumerate(lookup.most_common(n_top))}
+    hash_map["<s>".encode('utf8')] = 0
+    hash_map["</s>".encode('utf8')] = 1
     return hash_map, max_sequence_length, data_set_size

@@ -30,29 +30,30 @@ class TextInput(tf.keras.layers.Layer):
             trainable=True
         )
         self.max_len = tf.constant(max_sequence_len)
-        self.slicer = tf.keras.layers.Lambda(lambda x: x[:, :max_sequence_len])
+        self.slicer = tf.keras.layers.Lambda(lambda x: x[:, :max_sequence_len], name="sequence-slice")
 
     def __call__(self, tokens, output_embeddings=False):
-        emb_dims = self.embeddings.shape[-1]
+        with tf.name_scope("TextInput"):
+            hashed = tf.ragged.map_flat_values(self.table.lookup, tokens)
+            hashed = self.slicer(hashed)
 
-        hashed = tf.ragged.map_flat_values(self.table.lookup, tokens)
-        hashed = self.slicer(hashed)
-        batch_size = hashed.nrows()
-        seq_lengths = hashed.row_lengths()
-        time_steps = tf.cast(tf.reduce_max(seq_lengths), dtype=tf.int32)
-        padding = tf.zeros(shape=(batch_size, self.max_len - time_steps, emb_dims), dtype=tf.float32)
+            x = tf.ragged.map_flat_values(tf.nn.embedding_lookup, self.embeddings, hashed)
+            if output_embeddings:
+                return x
 
-        x = tf.ragged.map_flat_values(tf.nn.embedding_lookup, self.embeddings, hashed)
-        if output_embeddings:
-            return x
-        x = x.to_tensor()
+            x = x.to_tensor()
 
-        # pad to full max sequence length
-        # otherwise we get numerical inconsistencies with differing batch sizes
-        x = tf.concat([x, padding], axis=1)
+            emb_dims = tf.shape(self.embeddings)[-1]
+            seq_lengths = hashed.row_lengths()
+            batch_size = hashed.nrows()
+            time_steps = tf.cast(tf.reduce_max(seq_lengths), dtype=tf.int32)
+            padding = tf.zeros(shape=(batch_size, self.max_len - time_steps, emb_dims), dtype=tf.float32)
 
-        # time-step masking
-        dec_mask = tf.sequence_mask(lengths=seq_lengths, maxlen=self.max_len)
-        dec_mask = tf.cast(dec_mask, dtype=tf.float32)
-        dec_mask = tf.tile(tf.expand_dims(dec_mask, axis=-1), multiples=[1, 1, emb_dims]) + self.epsilon
-        return x, dec_mask, time_steps
+            # pad to full max sequence length
+            # otherwise we get numerical inconsistencies with differing batch sizes
+            x = tf.concat([x, padding], axis=1)
+
+            # time-step masking
+            mask = tf.sequence_mask(lengths=seq_lengths, maxlen=self.max_len, dtype=tf.float32)
+            # mask = tf.tile(tf.expand_dims(mask, axis=-1), multiples=[1, 1, emb_dims]) + self.epsilon
+            return x, mask, time_steps

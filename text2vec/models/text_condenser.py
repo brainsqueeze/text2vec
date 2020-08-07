@@ -2,7 +2,7 @@ import tensorflow as tf
 import numpy as np
 
 from text2vec.preprocessing import clean_and_split
-import nltk.data
+from nltk.tokenize import sent_tokenize
 
 from itertools import groupby
 
@@ -40,9 +40,6 @@ class Embedder(object):
 
 class TextHandler(object):
 
-    def __init__(self):
-        self._sentence_tokenizer = nltk.data.load("tokenizers/punkt/english.pickle")
-
     @staticmethod
     def _paragraph_tokenizer(input_text):
         result = [
@@ -56,4 +53,4 @@ class TextHandler(object):
         return self._paragraph_tokenizer(input_text)
 
     def split_sentences(self, input_text):
-        return self._sentence_tokenizer.tokenize(input_text.replace(";", "."))
+        return sent_tokenize(input_text.replace(";", "."))

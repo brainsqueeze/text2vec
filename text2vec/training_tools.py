@@ -1,6 +1,9 @@
-from text2vec.models import TextInput, Tokenizer
-from text2vec.models import TransformerEncoder, TransformerDecoder
-from text2vec.models import RecurrentEncoder, RecurrentDecoder
+from text2vec.models import TextInput
+from text2vec.models import Tokenizer
+from text2vec.models import TransformerEncoder
+from text2vec.models import TransformerDecoder
+from text2vec.models import RecurrentEncoder
+from text2vec.models import RecurrentDecoder
 import tensorflow as tf
 
 
@@ -68,6 +71,30 @@ class EncodingModel(tf.keras.Model):
         if return_vectors:
             return x_out, dec_time_steps, targets.to_tensor(default_value=0), context
         return x_out, dec_time_steps, targets.to_tensor(default_value=0)
+
+    @tf.function(input_signature=[tf.TensorSpec(shape=[None], dtype=tf.string)])
+    def embed(self, sentences):
+        tokens = self.tokenizer(sentences)  # turn sentences into ragged tensors of tokens
+        x_enc, enc_mask, _ = self.embed_layer(tokens)
+        return self.encode_layer(x_enc, mask=enc_mask, training=False)
+
+    @tf.function(input_signature=[tf.TensorSpec(shape=[None], dtype=tf.string)])
+    def token_embed(self, sentences):
+        tokens = self.tokenizer(sentences)  # turn sentences into ragged tensors of tokens
+        return tokens.to_tensor(''), self.embed_layer(tokens, output_embeddings=True).to_tensor(0)
+
+
+class ServingModel(tf.keras.Model):
+
+    def __init__(self, embed_layer, encode_layer, sep=' '):
+        super(ServingModel, self).__init__()
+
+        assert isinstance(embed_layer, TextInput)
+        assert type(encode_layer) in {RecurrentEncoder, TransformerEncoder}
+
+        self.embed_layer = embed_layer
+        self.tokenizer = Tokenizer(sep)
+        self.encode_layer = encode_layer
 
     @tf.function(input_signature=[tf.TensorSpec(shape=[None], dtype=tf.string)])
     def embed(self, sentences):

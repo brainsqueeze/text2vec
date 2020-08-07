@@ -1,4 +1,7 @@
-from text2vec.training_tools import EncodingModel, sequence_cost, vector_cost
+from text2vec.training_tools import EncodingModel
+from text2vec.training_tools import ServingModel
+from text2vec.training_tools import sequence_cost
+from text2vec.training_tools import vector_cost
 from text2vec.optimizer_tools import RampUpDecaySchedule
 from text2vec.preprocessing.text import clean_and_split
 from text2vec.preprocessing import get_top_tokens
@@ -98,7 +101,8 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
 
     with open(log_dir + "/metadata.tsv", "w") as tsv:
         for token, _ in sorted(hash_map.items(), key=lambda s: s[-1]):
-            tsv.write(token + "\n")
+            # since tensorflow converts strings to byets we will decode from UTF-8 here for display purposes
+            tsv.write(f"{token.decode('utf8', 'replace')}\n")
         tsv.write("<unk>\n")
 
     utils.log("Building computation graph")
@@ -211,8 +215,12 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
         model_file_name = checkpoint_manager.save()
 
     utils.log("Saving a frozen model")
-    signatures = {"serving_default": model.embed, "token_embed": model.token_embed}
-    tf.saved_model.save(model, f"{log_dir}/frozen/1", signatures)
+    serve_model_ = ServingModel(embed_layer=model.embed_layer, encode_layer=model.encode_layer, sep=' ')
+    tf.saved_model.save(
+        obj=serve_model_,
+        export_dir=f"{log_dir}/frozen/1",
+        signatures={"serving_default": serve_model_.embed, "token_embed": serve_model_.token_embed}
+    )
 
     utils.log("Reloading frozen model and comparing output to in-memory model")
     test = tf.saved_model.load(f"{log_dir}/frozen/1")
