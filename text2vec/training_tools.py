@@ -38,7 +38,7 @@ class EncodingModel(tf.keras.Model):
             x_enc, enc_mask, _ = self.embed_layer(tokens)
             if not training:
                 return self.encode_layer(x_enc, mask=enc_mask, training=False)
-            x_enc, context = self.encode_layer(x_enc, mask=enc_mask, training=True)
+            x_enc, context, *states = self.encode_layer(x_enc, mask=enc_mask, training=True)
 
         with tf.name_scope('Decoding'):
             batch_size = tokens.nrows()
@@ -64,9 +64,10 @@ class EncodingModel(tf.keras.Model):
                 dec_mask=dec_mask,
                 context=context,
                 attention=self.encode_layer.attention,
-                embeddings=self.embed_layer.embeddings,
-                training=training
+                training=training,
+                initial_state=states
             )
+            x_out = tf.tensordot(x_out, self.embed_layer.embeddings, axes=[2, 1])
 
         if return_vectors:
             return x_out, dec_time_steps, targets.to_tensor(default_value=0), context
@@ -113,11 +114,11 @@ def sequence_cost(target_sequences, sequence_logits, num_labels, smoothing=False
         if smoothing:
             smoothing = 0.1
             targets = tf.one_hot(target_sequences, depth=num_labels, on_value=1.0, off_value=0.0, axis=-1)
-            loss = tf.losses.softmax_cross_entropy(
-                logits=sequence_logits,
-                onehot_labels=targets,
-                label_smoothing=smoothing,
-                reduction=tf.losses.Reduction.NONE
+            loss = tf.keras.losses.binary_crossentropy(
+                y_true=targets,
+                y_pred=sequence_logits,
+                from_logits=True,
+                label_smoothing=smoothing
             )
         else:
             loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=sequence_logits, labels=target_sequences)

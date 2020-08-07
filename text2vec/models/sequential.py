@@ -21,7 +21,7 @@ class RecurrentEncoder(tf.keras.layers.Layer):
             context = self.attention(x)
 
             if training:
-                return x, context
+                return x, context, states
             return context
 
 
@@ -39,12 +39,15 @@ class RecurrentDecoder(tf.keras.layers.Layer):
 
         self.bi_lstm = BidirectionalLSTM(num_layers=num_layers, num_hidden=num_hidden, return_states=False)
         self.dense = tf.keras.layers.Dense(units=dims, activation=tf.nn.relu)
-        self.bias = tf.Variable(tf.zeros([num_labels]), name='bias', dtype=tf.float32, trainable=True)
 
-    def __call__(self, x_enc, enc_mask, x_dec, dec_mask, context, attention, embeddings, training=False, **kwargs):
+    def __call__(self, x_enc, enc_mask, x_dec, dec_mask, context, attention, training=False, **kwargs):
         with tf.name_scope("RecurrentDecoder"):
+            initial_state = kwargs.get("initial_state")
             x = self.drop(x_dec, training=training)
-            x = self.bi_lstm(x)
+            if initial_state is not None:
+                x = self.bi_lstm(x, initial_states=initial_state[0])
+            else:
+                x = self.bi_lstm(x)
             x = self.h_drop(self.projection(x, projection_vector=context))
             x = self.dense(x)
-            return tf.tensordot(x, embeddings, axes=[2, 1]) + self.bias
+            return x

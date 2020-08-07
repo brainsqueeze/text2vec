@@ -57,9 +57,8 @@ class TransformerDecoder(tf.keras.layers.Layer):
         self.positional_encode = PositionalEncoder(emb_dims=dims, max_sequence_length=max_sequence_len)
         self.MHA = [MultiHeadAttention(emb_dims=dims, layers=layers, keep_prob=keep_prob) for _ in range(n_stacks)]
         self.FFN = [PositionWiseFFN(emb_dims=dims) for _ in range(n_stacks)]
-        self.bias = tf.Variable(tf.zeros([num_labels]), name='bias', dtype=tf.float32, trainable=True)
 
-    def __call__(self, x_enc, enc_mask, x_dec, dec_mask, context, attention, embeddings, training=False):
+    def __call__(self, x_enc, enc_mask, x_dec, dec_mask, context, attention, training=False, **kwargs):
         with tf.name_scope("TransformerDecoder"):
             x_dec = self.positional_encode(x_dec, dec_mask)
             x_dec = self.drop(x_dec, training=training)
@@ -75,4 +74,4 @@ class TransformerDecoder(tf.keras.layers.Layer):
                 x_dec = self.h_drop(ffn(x_dec), training=training) + x_dec
                 x_dec = self.layer_norm(x_dec)
                 x_dec = self.h_drop(self.projection(x_dec, projection_vector=context), training=training) + x_dec
-            return tf.tensordot(x_dec, embeddings, axes=[2, 1]) + self.bias
+            return x_dec
