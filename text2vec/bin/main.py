@@ -225,8 +225,8 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
     utils.log("Reloading frozen model and comparing output to in-memory model")
     test = tf.saved_model.load(f"{log_dir}/frozen/1")
     test_model = test.signatures["serving_default"]
-    test_output = test_model(tf.constant(test_tokens))["output_0"].numpy()
-    utils.log(f"Outputs on CV set are approximately the same?: {np.allclose(test_output, model(test_tokens).numpy())}")
+    test_output = test_model(tf.constant(test_tokens))["output_0"]
+    utils.log(f"Outputs on CV set are approximately the same?: {np.allclose(test_output, model.embed(test_tokens))}")
     return model_file_name
 
 

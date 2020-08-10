@@ -53,4 +53,5 @@ class PositionalEncoder(tf.keras.layers.Layer):
 
     def __call__(self, x, mask):
         with tf.name_scope('PositionalEncoder'):
-            return tf.einsum('ijk,ij->ijk', x + self.encoder, mask)
+            time_steps = tf.shape(x)[1]
+            return tf.einsum('ijk,ij->ijk', x + self.encoder[:time_steps, :], mask)
