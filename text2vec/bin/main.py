@@ -84,7 +84,8 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
 
     # GPU config
     for gpu in tf.config.experimental.list_physical_devices('GPU'):
-        tf.config.experimental.set_memory_growth(gpu, True)
+        # tf.config.experimental.set_memory_growth(gpu, True)
+        tf.config.experimental.set_memory_growth(gpu, False)
     tf.config.set_soft_device_placement(True)
 
     log_dir = f"{model_path}/{model_folder}" if model_path else f"{root}/../../text2vec/{model_folder}"
