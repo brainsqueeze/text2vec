@@ -143,10 +143,10 @@ Text2vec includes a Python API with convenient classes for handling attention an
 
 #### Pre-built Models
 
-  - [text2vec.models.TransformerEncoder](/text2vec/models/transformer.py#11)
-  - [text2vec.models.TransformerDecoder](/text2vec/models/transformer.py#81)
-  - [text2vec.models.RecurrentEncoder](/text2vec/models/sequential.py#8)
-  - [text2vec.models.RecurrentDecoder](/text2vec/models/sequential.py#61)
+  - [text2vec.models.TransformerEncoder](/text2vec/models/transformer.py#L11)
+  - [text2vec.models.TransformerDecoder](/text2vec/models/transformer.py#L81)
+  - [text2vec.models.RecurrentEncoder](/text2vec/models/sequential.py#L8)
+  - [text2vec.models.RecurrentDecoder](/text2vec/models/sequential.py#L61)
 
 #### Input and Word-Embeddings Components
 
@@ -170,23 +170,23 @@ Text2vec includes a Python API with convenient classes for handling attention an
 
 #### General Layer Components
 
-  - [text2vec.models.components.utils.LayerNorm](/text2vec/models/components/utils.py#5)
-  - [text2vec.models.components.utils.TensorProjection](/text2vec/models/components/utils.py#43)
-  - [text2vec.models.components.utils.PositionalEncder](/text2vec/models/components/utils.py#76)
+  - [text2vec.models.components.utils.LayerNorm](/text2vec/models/components/utils.py#L5)
+  - [text2vec.models.components.utils.TensorProjection](/text2vec/models/components/utils.py#L43)
+  - [text2vec.models.components.utils.PositionalEncder](/text2vec/models/components/utils.py#L76)
 
 #### Dataset Pre-processing
   
-  - [text2vec.preprocessing.get_top_tokens](/text2vec/preprocessing/utils.py#5)
+  - [text2vec.preprocessing.get_top_tokens](/text2vec/preprocessing/utils.py#L5)
 
 #### String Pre-processing
 
-  - [text2vec.preprocessing.text.clean_and_split](/text2vec/preprocessing/text.py#6)
-  - [text2vec.preprocessing.text.replace_money_token](/text2vec/preprocessing/text.py#27)
-  - [text2vec.preprocessing.text.replace_urls_token](/text2vec/preprocessing/text.py#43)
-  - [text2vec.preprocessing.text.fix_unicode_quotes](/text2vec/preprocessing/text.py#60)
-  - [text2vec.preprocessing.text.format_large_numbers](/text2vec/preprocessing/text.py#78)
-  - [text2vec.preprocessing.text.pad_punctuation](/text2vec/preprocessing/text.py#95)
-  - [text2vec.preprocessing.text.normalize_text](/text2vec/preprocessing/text.py#113)
+  - [text2vec.preprocessing.text.clean_and_split](/text2vec/preprocessing/text.py#L6)
+  - [text2vec.preprocessing.text.replace_money_token](/text2vec/preprocessing/text.py#L27)
+  - [text2vec.preprocessing.text.replace_urls_token](/text2vec/preprocessing/text.py#L43)
+  - [text2vec.preprocessing.text.fix_unicode_quotes](/text2vec/preprocessing/text.py#L60)
+  - [text2vec.preprocessing.text.format_large_numbers](/text2vec/preprocessing/text.py#L78)
+  - [text2vec.preprocessing.text.pad_punctuation](/text2vec/preprocessing/text.py#L95)
+  - [text2vec.preprocessing.text.normalize_text](/text2vec/preprocessing/text.py#L113)
 
 
 ## Inference Demo
