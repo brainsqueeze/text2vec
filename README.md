@@ -5,6 +5,13 @@ Models for contextual embedding of arbitrary texts.
 ## Setup
 ---
 
+For the GPU build of Tensorflow, if nightly features are not
+required it is recommended to install Tensorflow and its dependencies
+through Anaconda as
+```bash
+conda install -c anaconda tensorflow-gpu
+```
+
 To install the core components as an import-able Python library
 simply run
 
@@ -127,6 +134,60 @@ it will fall back to the CPU for training and inferencing.
 ### Mutual contextual orthogonality
 
 To impose quasi-mutual orthogonality on the learned context vectors simply add the `--orthogonal` flag to the training command. This will add a loss term that can be thought of as a Lagrange multiplier where the constraint is self-alignment of the context vectors, and orthogonality between non-self vectors. The aim is not to impose orthogonality between all text inputs that are not the same, but rather to coerce the model to learn significantly different encodings for different contextual inputs.
+
+## Python API
+
+Text2vec includes a Python API with convenient classes for handling attention and LSTM mechanisms. These classes can be used to create custom models and layers to address custom problems.
+
+### Model components
+
+#### Pre-built Models
+
+  - [text2vec.models.TransformerEncoder](/text2vec/models/transformer.py#11)
+  - [text2vec.models.TransformerDecoder](/text2vec/models/transformer.py#81)
+  - [text2vec.models.RecurrentEncoder](/text2vec/models/sequential.py#8)
+  - [text2vec.models.RecurrentDecoder](/text2vec/models/sequential.py#61)
+
+#### Input and Word-Embeddings Components
+
+  - [text2vec.models.TextInput](/text2vec/models/components/feeder.py#L35)
+  - [text2vec.models.Tokenizer](/text2vec/models/components/feeder.py#L4)
+
+#### Attention Components
+
+  - [text2vec.models.components.attention.ScalarDotAttention](/text2vec/models/components/attention.py#L4)
+  - [text2vec.models.components.attention.SingleHeadAttention](/text2vec/models/components/attention.py#L111)
+  - [text2vec.models.MultiHeadAttention](/text2vec/models/components/attention.py#L175)
+  - [text2vec.models.BahdanauAttention](/text2vec/models/components/attention.py#L53)
+
+#### LSTM Components
+
+  - [text2vec.models.BidirectionalLSTM](/text2vec/models/components/recurrent.py#L4)
+
+#### Pointwise Feedforward Components
+
+  - [text2vec.models.PositionWiseFFN](/text2vec/models/components/feed_forward.py#L4)
+
+#### General Layer Components
+
+  - [text2vec.models.components.utils.LayerNorm](/text2vec/models/components/utils.py#5)
+  - [text2vec.models.components.utils.TensorProjection](/text2vec/models/components/utils.py#43)
+  - [text2vec.models.components.utils.PositionalEncder](/text2vec/models/components/utils.py#76)
+
+#### Dataset Pre-processing
+  
+  - [text2vec.preprocessing.get_top_tokens](/text2vec/preprocessing/utils.py#5)
+
+#### String Pre-processing
+
+  - [text2vec.preprocessing.text.clean_and_split](/text2vec/preprocessing/text.py#6)
+  - [text2vec.preprocessing.text.replace_money_token](/text2vec/preprocessing/text.py#27)
+  - [text2vec.preprocessing.text.replace_urls_token](/text2vec/preprocessing/text.py#43)
+  - [text2vec.preprocessing.text.fix_unicode_quotes](/text2vec/preprocessing/text.py#60)
+  - [text2vec.preprocessing.text.format_large_numbers](/text2vec/preprocessing/text.py#78)
+  - [text2vec.preprocessing.text.pad_punctuation](/text2vec/preprocessing/text.py#95)
+  - [text2vec.preprocessing.text.normalize_text](/text2vec/preprocessing/text.py#113)
+
 
 ## Inference Demo
 ---

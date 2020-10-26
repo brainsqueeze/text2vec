@@ -1,7 +1,0 @@
-tensorflow>=2.0.0
-tensorboard
-numpy
-nltk
-tornado
-flask
-flask-cors
