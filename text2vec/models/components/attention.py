@@ -2,9 +2,39 @@ import tensorflow as tf
 
 
 class ScalarDotAttention(tf.keras.layers.Layer):
+    """Scalar dot attention layer which computes
+    ```
+    softmax(Query * permutedim(Key, (3, 1, 2)) / sqrt(T)) * permutedim(Value, (2, 1, 3))
+    ```
+    where `T` is the number of time-steps.
+
+    Future sequence-step masking can be performed, optionally, where the upper-triangular part of the softmax
+    output tensor is set to 0 values.
+
+    Input tensor shapes should be `[batch_size, T, dim]`.
+
+    Examples
+    --------
+    ```python
+    import tensorflow as tf
+    from text2vec.models.components.attention import ScalarDotAttention
+
+    Q = tf.random.uniform(shape=[4, 7, 12])
+    K = tf.random.uniform(shape=[4, 7, 12])
+    V = tf.random.uniform(shape=[4, 7, 12])
+
+    attention = ScalarDotAttention()
+
+    # un-masked scalar dot attention
+    attention(Q, K, V)
+
+    # future masking
+    attention(Q, K, V, mask_future=True)
+    ```
+    """
 
     def __init__(self):
-        super(ScalarDotAttention, self).__init__(name="ScalarDotAttention")
+        super().__init__(name="ScalarDotAttention")
 
     def __call__(self, query, key, value, mask_future=False):
         with tf.name_scope("ScalarDotAttention"):
@@ -21,9 +51,40 @@ class ScalarDotAttention(tf.keras.layers.Layer):
 
 
 class BahdanauAttention(tf.keras.layers.Layer):
+    """Layer which computes the Bahdanau attention mechanism either as a self-attention or as
+    a encoder-decoder attentention.
+
+    If only the `encoded` input is specified then self-attention will be computed.
+
+    Input tensor shapes should be `[batch_size, T, dim]`.
+
+    Parameters
+    ----------
+    size : int
+        The dimensionality of the hidden attention weights. This is the same as the word-embedding dimensionality.
+
+    Examples
+    --------
+    ```python
+    import tensorflow as tf
+    from text2vec.models import BahdanauAttention
+
+    encoded_sequences = tf.random.uniform(shape=[4, 7, 12])
+    decoded_sequences = tf.random.uniform(shape=[4, 11, 12])
+
+    dims = tf.shape(encoded)[-1]
+    attention = BahdanauAttention(dims)
+
+    # self-attention
+    attention(encoded_sequences, decoded_sequences)
+
+    # future masking
+    attention(encoded_sequences, decoded_sequences)
+    ```
+    """
 
     def __init__(self, size):
-        super(BahdanauAttention, self).__init__(name="BahdanauAttention")
+        super().__init__(name="BahdanauAttention")
         self.W = tf.Variable(
             tf.random.truncated_normal([size, size], mean=-0.01, stddev=0.01),
             name='weight',
@@ -40,17 +101,51 @@ class BahdanauAttention(tf.keras.layers.Layer):
                 score = tf.reduce_sum(self.U * score, axis=-1)
                 alphas = tf.nn.softmax(score, name="attention-weights")
                 return tf.reduce_sum(encoded * tf.expand_dims(alphas, -1), 1, name="context-vector")
-            else:
-                score = tf.einsum("ijm,mn,ikn->ijk", encoded, self.W, decoded)
-                alphas = tf.nn.softmax(score)
-                alphas = tf.reduce_sum(alphas, axis=1)
-                return tf.reduce_sum(decoded * tf.expand_dims(alphas, -1), axis=1)
+
+            score = tf.einsum("ijm,mn,ikn->ijk", encoded, self.W, decoded)
+            alphas = tf.nn.softmax(score)
+            alphas = tf.reduce_sum(alphas, axis=1)
+            return tf.reduce_sum(decoded * tf.expand_dims(alphas, -1), axis=1)
 
 
 class SingleHeadAttention(tf.keras.layers.Layer):
+    """Layer which computes the single-head-attentinon mechanism as described in
+    https://arxiv.org/abs/1706.03762.
+
+    Query, key, value tensors are submitted to the layer as a tuple. Optional future-masking is available.
+    The optional `training` flag toggles dropout on/off.
+
+    Input tensor shapes should be `[batch_size, T, dim]`.
+
+    Parameters
+    ----------
+    emb_dims : int
+        The word-embedding dimensionality. This value determines the dimensionalities of the hidden weights.
+    layers : int, optional
+        The number of parallel single-head-attention mechanisms, by default 8.
+    keep_prob : float, optional
+        Value between 0 and 1.0 which determines `1 - dropout_rate`, by default 1.0.
+
+    Examples
+    --------
+    ```python
+    import tensorflow as tf
+    from text2vec.models.components.attention import SingleHeadAttention
+
+    Q = tf.random.uniform(shape=[4, 7, 12])
+    K = tf.random.uniform(shape=[4, 11, 12])
+    V = tf.random.uniform(shape=[4, 5, 12])
+
+    # 25% dropout rate
+    attention = SingleHeadAttention(emb_dims=12, keep_prob=0.75)
+
+    # masking and dropout turned on
+    attention(inputs=(Q, K, V), mask_future=True, training=True)
+    ```
+    """
 
     def __init__(self, emb_dims, layers=8, keep_prob=1.0):
-        super(SingleHeadAttention, self).__init__(name="SingleHeadAttention")
+        super().__init__(name="SingleHeadAttention")
         assert isinstance(layers, int) and layers > 0
 
         dims = emb_dims
@@ -78,9 +173,43 @@ class SingleHeadAttention(tf.keras.layers.Layer):
 
 
 class MultiHeadAttention(tf.keras.layers.Layer):
+    """Layer which computes the multi-head-attentinon mechanism as described in
+    https://arxiv.org/abs/1706.03762.
+
+    Query, key, value tensors are submitted to the layer as a tuple. Optional future-masking is available.
+    The optional `training` flag toggles dropout on/off.
+
+    Input tensor shapes should be `[batch_size, T, dim]`.
+
+    Parameters
+    ----------
+    emb_dims : int
+        The word-embedding dimensionality. This value determines the dimensionalities of the hidden weights.
+    layers : int, optional
+        The number of parallel single-head-attention mechanisms, by default 8.
+    keep_prob : float, optional
+        Value between 0 and 1.0 which determines `1 - dropout_rate`, by default 1.0.
+
+    Examples
+    --------
+    ```python
+    import tensorflow as tf
+    from text2vec.models import MultiHeadAttention
+
+    Q = tf.random.uniform(shape=[4, 7, 12])
+    K = tf.random.uniform(shape=[4, 11, 12])
+    V = tf.random.uniform(shape=[4, 5, 12])
+
+    # 25% dropout rate
+    attention = MultiHeadAttention(emb_dims=12, keep_prob=0.75)
+
+    # masking and dropout turned on
+    attention(inputs=(Q, K, V), mask_future=True, training=True)
+    ```
+    """
 
     def __init__(self, emb_dims, layers=8, keep_prob=1.0):
-        super(MultiHeadAttention, self).__init__(name="MultiHeadAttention")
+        super().__init__(name="MultiHeadAttention")
         self.layer_heads = []
         for i in range(layers):
             with tf.name_scope(f"head-{i}"):

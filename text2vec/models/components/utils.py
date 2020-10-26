@@ -1,11 +1,33 @@
-import tensorflow as tf
 import numpy as np
+import tensorflow as tf
 
 
 class LayerNorm(tf.keras.layers.Layer):
+    """Layer normalization, independent of batch size.
+
+    Parameters
+    ----------
+    epsilon : float, optional
+        Regularization parameter when dividing by the variance, by default 1e-8
+    scale : float, optional
+        Scaling factor for the centralized and normalized values, by default 1.0
+    bias : float, optional
+        Bias offset value, by default 0
+
+    Examples
+    --------
+    ```python
+    import tensorflow as tf
+    from text2vec.models import utils
+
+    normalizer = utils.LayerNorm()
+    x = tf.random.uniform(shape=[4, 7, 12])
+    normalizer(x)
+    ```
+    """
 
     def __init__(self, epsilon=1e-8, scale=1.0, bias=0):
-        super(LayerNorm, self).__init__(name="LayerNorm")
+        super().__init__(name="LayerNorm")
         self.epsilon = tf.constant(epsilon, dtype=tf.float32)
         self.scale = tf.constant(scale, dtype=tf.float32)
         self.bias = tf.constant(bias, dtype=tf.float32)
@@ -19,9 +41,26 @@ class LayerNorm(tf.keras.layers.Layer):
 
 
 class TensorProjection(tf.keras.layers.Layer):
+    """Projects sequence vectors onto a fixed vector. This returns a new tensor with the same shape as the
+    input tensor, with all sequence vectors projected.
+
+    The vectors for projection should have the same dimensions as the input tensor `x`, `[batch_size, T, dim]`.
+
+    Examples
+    --------
+    ```python
+    import tensorflow as tf
+    from text2vec.models import utils
+
+    projector = utils.TensorProjection()
+    x = tf.random.uniform(shape=[4, 7, 12])
+    vectors = tf.random.uniform(shape=[4, 12])
+    projected_tensor = projector(x, projection_vector=vectors)
+    ```
+    """
 
     def __init__(self):
-        super(TensorProjection, self).__init__(name="TensorProjection")
+        super().__init__(name="TensorProjection")
 
     def __call__(self, x, projection_vector):
         with tf.name_scope("TensorProjection"):
@@ -35,9 +74,38 @@ class TensorProjection(tf.keras.layers.Layer):
 
 
 class PositionalEncoder(tf.keras.layers.Layer):
+    """Layer which initializes the positional encoding tensor, and defines the operation which adds the encoding
+    to an input tensor and then applies a sequence mask.
+
+    Parameters
+    ----------
+    emb_dims : int
+        The word-embedding dimensionality. This value determines the dimensionalities of the hidden weights.
+    max_sequence_len : int
+        Longest sequence seen at training time.
+
+    Examples
+    --------
+    ```python
+    import tensorflow as tf
+    from text2vec.models import TextInput
+    from text2vec.models import utils
+
+    lookup = {'string': 0, 'is': 1, 'example': 2}
+    inputer = TextInput(token_hash=lookup, embedding_size=16, max_sequence_len=10)
+    encoder = utils.PositionalEncoder(emb_dims=16, max_seuqnece_len=10)
+
+    text = tf.ragged.constant([
+        ["Sample", "string", "."],
+        ["This", "is", "a", "second", "example", "."]
+    ])
+    x, mask, _ = inputer(text)
+    encoder(x, mask)
+    ```
+    """
 
     def __init__(self, emb_dims, max_sequence_length):
-        super(PositionalEncoder, self).__init__()
+        super().__init__()
 
         positions = np.arange(max_sequence_length).astype(np.float32)
         column_range = np.arange(emb_dims).astype(np.float32)

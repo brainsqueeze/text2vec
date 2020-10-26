@@ -1,10 +1,11 @@
+import tensorflow as tf
+
 from .components.attention import BahdanauAttention
 from .components.attention import MultiHeadAttention
 from .components.feed_forward import PositionWiseFFN
 from .components.utils import PositionalEncoder
 from .components.utils import LayerNorm
 from .components.utils import TensorProjection
-import tensorflow as tf
 
 
 class TransformerEncoder(tf.keras.layers.Layer):
