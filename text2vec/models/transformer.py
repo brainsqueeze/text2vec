@@ -9,10 +9,46 @@ from .components.utils import TensorProjection
 
 
 class TransformerEncoder(tf.keras.layers.Layer):
+    """Attention based encoding pipeline.
+
+    Parameters
+    ----------
+    max_sequence_len : int
+        Longest sequence seen at training time.
+    layers : int, optional
+        Number of layers in the multi-head-attention layer, by default 8
+    n_stacks : int, optional
+        Number of encoding blocks to chain, by default 1
+    embedding_size : int, optional
+        Dimensionality of the word-embeddings, by default 50.
+    input_keep_prob : float, optional
+        Value between 0 and 1.0 which determines `1 - dropout_rate`, by default 1.0.
+    hidden_keep_prob : float, optional
+        Value between 0 and 1.0 which determines `1 - dropout_rate`, by default 1.0.
+
+    Examples
+    --------
+    ```python
+    import tensorflow as tf
+    from text2vec.models import TextInputs
+    from text2vec.models import TransformerEncoder
+
+    lookup = {'string': 0, 'is': 1, 'example': 2}
+    inputer = TextInput(token_hash=lookup, embedding_size=16, max_sequence_len=10)
+    encoder = TransformerEncoder(max_sequence_len=10, embedding_size=16, input_keep_prob=0.75)
+
+    text = tf.ragged.constant([
+        ["Sample", "string", "."],
+        ["This", "is", "a", "second", "example", "."]
+    ])
+    x, mask, _ = inputer(text)
+    x, context = encoder(x_enc, mask=enc_mask, training=True)
+    ```
+    """
 
     def __init__(self, max_sequence_len, layers=8, n_stacks=1, embedding_size=50,
                  input_keep_prob=1.0, hidden_keep_prob=1.0):
-        super(TransformerEncoder, self).__init__()
+        super().__init__()
         dims = embedding_size
         keep_prob = hidden_keep_prob
 
@@ -43,10 +79,27 @@ class TransformerEncoder(tf.keras.layers.Layer):
 
 
 class TransformerDecoder(tf.keras.layers.Layer):
+    """Attention based decoding pipeline.
 
-    def __init__(self, max_sequence_len, num_labels, layers=8, n_stacks=1, embedding_size=50,
+    Parameters
+    ----------
+    max_sequence_len : int
+        Longest sequence seen at training time.
+    layers : int, optional
+        Number of layers in the multi-head-attention layer, by default 8
+    n_stacks : int, optional
+        Number of encoding blocks to chain, by default 1
+    embedding_size : int, optional
+        Dimensionality of the word-embeddings, by default 50.
+    input_keep_prob : float, optional
+        Value between 0 and 1.0 which determines `1 - dropout_rate`, by default 1.0.
+    hidden_keep_prob : float, optional
+        Value between 0 and 1.0 which determines `1 - dropout_rate`, by default 1.0.
+    """
+
+    def __init__(self, max_sequence_len, layers=8, n_stacks=1, embedding_size=50,
                  input_keep_prob=1.0, hidden_keep_prob=1.0):
-        super(TransformerDecoder, self).__init__()
+        super().__init__()
         dims = embedding_size
         keep_prob = hidden_keep_prob
 

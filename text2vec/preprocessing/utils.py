@@ -6,9 +6,18 @@ def get_top_tokens(corpus, n_top=1000):
     """
     Builds the token mapping which is used to initialize the word embeddings in the model.
     Get the most frequent terms which appear in the training corpus.
-    :param corpus: dataset of strings (tf.data.Dataset)
-    :param n_top: the number of most frequent tokens (int, optional, default=1000)
-    :return: token->integer lookup, maximum sequence length, size of data set (dict, int, int)
+
+    Parameters
+    ----------
+    corpus : tf.data.Dataset
+        Entire dataset object
+    n_top : int, optional
+        Number of most frequenct vocab terms to keep for training, by default 1000
+
+    Returns
+    -------
+    (dict, int, int)
+        (token->integer lookup, maximum sequence length, size of data set)
     """
 
     assert isinstance(corpus, tf.data.Dataset)

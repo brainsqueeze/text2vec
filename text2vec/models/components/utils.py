@@ -93,7 +93,7 @@ class PositionalEncoder(tf.keras.layers.Layer):
 
     lookup = {'string': 0, 'is': 1, 'example': 2}
     inputer = TextInput(token_hash=lookup, embedding_size=16, max_sequence_len=10)
-    encoder = utils.PositionalEncoder(emb_dims=16, max_seuqnece_len=10)
+    encoder = utils.PositionalEncoder(emb_dims=16, max_sequence_len=10)
 
     text = tf.ragged.constant([
         ["Sample", "string", "."],

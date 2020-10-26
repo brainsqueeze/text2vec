@@ -1,13 +1,46 @@
+import tensorflow as tf
+
 from .components.attention import BahdanauAttention
 from .components.recurrent import BidirectionalLSTM
 from .components.utils import TensorProjection
-import tensorflow as tf
 
 
 class RecurrentEncoder(tf.keras.layers.Layer):
+    """LSTM based encoding pipeline.
+
+    Parameters
+    ----------
+    max_sequence_len : int
+        Longest sequence seen at training time.
+    num_hidden : int
+        Dimensionality of hidden LSTM layer weights.
+    num_layers : int, optional
+        Number of hidden LSTM layers, by default 2
+    input_keep_prob : float, optional
+        Value between 0 and 1.0 which determines `1 - dropout_rate`, by default 1.0.
+
+    Examples
+    --------
+    ```python
+    import tensorflow as tf
+    from text2vec.models import TextInputs
+    from text2vec.models import RecurrentEncoder
+
+    lookup = {'string': 0, 'is': 1, 'example': 2}
+    inputer = TextInput(token_hash=lookup, embedding_size=16, max_sequence_len=10)
+    encoder = RecurrentEncoder(max_sequence_len=10, num_hidden=8, input_keep_prob=0.75)
+
+    text = tf.ragged.constant([
+        ["Sample", "string", "."],
+        ["This", "is", "a", "second", "example", "."]
+    ])
+    x, mask, _ = inputer(text)
+    x_enc, context, *states = encoder(x_enc, mask=enc_mask, training=True)
+    ```
+    """
 
     def __init__(self, max_sequence_len, num_hidden, num_layers=2, input_keep_prob=1.0, **kwargs):
-        super(RecurrentEncoder, self).__init__()
+        super().__init__()
         self.max_sequence_length = max_sequence_len
 
         self.drop = tf.keras.layers.Dropout(1 - input_keep_prob, name="InputDropout")
@@ -26,10 +59,27 @@ class RecurrentEncoder(tf.keras.layers.Layer):
 
 
 class RecurrentDecoder(tf.keras.layers.Layer):
+    """LSTM based decoding pipeline.
 
-    def __init__(self, max_sequence_len, num_labels, num_hidden, embedding_size=50, num_layers=2,
+    Parameters
+    ----------
+    max_sequence_len : int
+        Longest sequence seen at training time.
+    num_hidden : int
+        Dimensionality of hidden LSTM layer weights.
+    embedding_size : int, optional
+        Dimensionality of the word-embeddings, by default 50.
+    num_layers : int, optional
+        Number of hidden LSTM layers, by default 2
+    input_keep_prob : float, optional
+        Value between 0 and 1.0 which determines `1 - dropout_rate`, by default 1.0.
+    hidden_keep_prob : float, optional
+        Hidden states dropout. Value between 0 and 1.0 which determines `1 - dropout_rate`, by default 1.0.
+    """
+
+    def __init__(self, max_sequence_len, num_hidden, embedding_size=50, num_layers=2,
                  input_keep_prob=1.0, hidden_keep_prob=1.0):
-        super(RecurrentDecoder, self).__init__()
+        super().__init__()
         self.max_sequence_length = max_sequence_len
         dims = embedding_size
 

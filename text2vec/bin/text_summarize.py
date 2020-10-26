@@ -1,6 +1,3 @@
-from .serving_tools import Embedder
-import numpy as np
-
 import time
 import json
 
@@ -13,11 +10,30 @@ from tornado.ioloop import IOLoop
 import tornado.autoreload
 import tornado
 
+import numpy as np
+from .serving_tools import Embedder
+
 app = Flask(__name__)
 model = Embedder()
 
 
 def responder(results, error, message):
+    """Boilerplate Flask response item.
+
+    Parameters
+    ----------
+    results : dict
+        API response
+    error : int
+        Error code
+    message : str
+        Message to send to the client
+
+    Returns
+    -------
+    flask.Reponse
+    """
+
     assert isinstance(results, dict)
     results["message"] = message
     results = json.dumps(results, indent=2)
@@ -29,14 +45,22 @@ def responder(results, error, message):
     )
 
 
-def cosine_similarity_sort(net_vector, embedding_matrix, attend=False):
+def cosine_similarity_sort(net_vector, embedding_matrix):
     """
     Computes the cosine similarity scores and then returns
     the sorted results
-    :param net_vector: the context vector for the entire document (ndarray)
-    :param embedding_matrix: the context vectors (row vectors) for each constituent body of text (ndarray)
-    :param attend: set flag to get the self-attention for the embeddings (bool, optional)
-    :return: (sorted order of documents, cosine similarity scores)
+
+    Parameters
+    ----------
+    net_vector : np.ndarray
+        The context vector for the entire document
+    embedding_matrix : np.ndarray
+        The context vectors (row vectors) for each constituent body of text
+
+    Returns
+    -------
+    (ndarray, ndarray)
+        (sorted order of documents, cosine similarity scores)
     """
 
     similarity = np.dot(embedding_matrix, net_vector)
@@ -50,8 +74,15 @@ def cosine_similarity_sort(net_vector, embedding_matrix, attend=False):
 def angle_from_cosine(cosine_similarity):
     """
     Computes the angles in degrees from cosine similarity scores
-    :param cosine_similarity: (ndarray)
-    :return: angles in degrees (ndarray)
+
+    Parameters
+    ----------
+    cosine_similarity : np.ndarray
+
+    Returns
+    -------
+    ndarray
+        Cosine angles (num_sentences,)
     """
 
     return np.arccos(cosine_similarity) * (180 / np.pi)
@@ -60,10 +91,20 @@ def angle_from_cosine(cosine_similarity):
 def choose(sentences, scores, embeddings):
     """
     Selects the best constituent texts from the similarity scores
-    :param sentences: array of the input texts, sorted by scores (ndarray)
-    :param scores: cosine similarity scores, sorted (ndarray)
-    :param embeddings: embedding matrix for input texts, sorted by scores (ndarray)
-    :return: best sentences sorted, best scores sorted, best embeddings sorted
+
+    Parameters
+    ----------
+    sentences : np.ndarray
+        Array of the input texts, sorted by scores.
+    scores : np.ndarray
+        Cosine similarity scores, sorted
+    embeddings : np.ndarray
+        Embedding matrix for input texts, sorted by scores
+
+    Returns
+    -------
+    (np.ndarray, np.ndarray, np.ndarray)
+        (best sentences sorted, best scores sorted, best embeddings sorted)
     """
 
     if scores.shape[0] == 1:
@@ -77,18 +118,23 @@ def choose(sentences, scores, embeddings):
 def text_pass_filter(texts, texts_embeddings, net_vector):
     """
     Runs the scoring + filtering process on input texts
-    :param texts: input texts (ndarray)
-    :param texts_embeddings: context embedding matrix for input texts (ndarray)
-    :param net_vector: the context vector for the entire document (ndarray)
-    :return: best sentences sorted, best scores sorted, best embeddings sorted
+
+    Parameters
+    ----------
+    texts : np.ndarray
+        Input texts.
+    texts_embeddings : np.ndarray
+        Context embedding matrix for input texts.
+    net_vector : np.ndarray
+        The context vector for the entire document
+
+    Returns
+    -------
+    (np.ndarray, np.ndarray, np.ndarray)
+        (best sentences sorted, best scores sorted, best embeddings sorted)
     """
 
-    sorted_order, scores = cosine_similarity_sort(
-        net_vector=net_vector,
-        embedding_matrix=texts_embeddings,
-        attend=False
-    )
-
+    sorted_order, scores = cosine_similarity_sort(net_vector=net_vector, embedding_matrix=texts_embeddings)
     texts = np.array(texts)[sorted_order]
     filtered_texts, filtered_scores, filtered_embeddings = choose(
         sentences=texts,
@@ -101,10 +147,16 @@ def text_pass_filter(texts, texts_embeddings, net_vector):
 
 def softmax(logits):
     """
-    Computes the softmax function along rows
-    of the incoming logits matrix
-    :param logits: (ndarray)
-    :return: array of the same shape as logits (ndarray)
+    Computes the softmax of the input logits.
+
+    Parameters
+    ----------
+    logits : np.ndarray
+
+    Returns
+    -------
+    np.ndarray
+        Softmax output array with the same shape as the input.
     """
 
     soft = np.exp(logits)
@@ -119,7 +171,10 @@ def softmax(logits):
 def compute():
     """
     Main Flask handler function
-    :return: (Flask response object)
+
+    Returns
+    -------
+    flask.Response
     """
 
     j = request.get_json()
@@ -152,10 +207,12 @@ def compute():
 
 
 def run_server(port=8008):
-    """
-    This initializes the Tornado WSGI server to allow for
-    asynchronous request handling
-    :param port: (int)
+    """This initializes the Tornad WSGI server to allow robust request handling.
+
+    Parameters
+    ----------
+    port : int, optional
+        Port number to serve the app on, by default 8008
     """
 
     http_server = HTTPServer(WSGIContainer(app))
