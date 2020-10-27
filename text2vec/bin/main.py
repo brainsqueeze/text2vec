@@ -1,4 +1,3 @@
-from random import shuffle
 from glob import glob
 import itertools
 import argparse
@@ -267,6 +266,14 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
 
 
 def main():
+    """Training and inferencing entrypoint for CLI.
+
+    Raises
+    ------
+    NotImplementedError
+        Raised if a `run` mode other than `train` or `infer` are passed.
+    """
+
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--run", choices=["train", "infer"], help="Run type.", required=True)
     parser.add_argument("--attention", action='store_true', help="Set to use attention transformer model.")
