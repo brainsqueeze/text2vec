@@ -14,8 +14,14 @@ setup(
         "pyyaml"
     ],
     extras_require=dict(
-        gpu="tensorflow-gpu>=2.0.0",
-        cpu="tensorflow>=2.0.0"
+        serving=[
+            "flask",
+            "flask-cors",
+            "nltk",
+            "tornado"
+        ],
+        gpu="tensorflow-gpu>=2.1.0",
+        cpu="tensorflow>=2.1.0"
     ),
     packages=find_packages(exclude=["bin"]),
     entry_points={

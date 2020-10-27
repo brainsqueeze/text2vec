@@ -1,3 +1,15 @@
+from random import shuffle
+from glob import glob
+import itertools
+import argparse
+import os
+
+import yaml
+
+import numpy as np
+import tensorflow as tf
+from tensorboard.plugins import projector
+
 from text2vec.training_tools import EncodingModel
 from text2vec.training_tools import ServingModel
 from text2vec.training_tools import sequence_cost
@@ -7,28 +19,24 @@ from text2vec.preprocessing.text import clean_and_split
 from text2vec.preprocessing import get_top_tokens
 from . import utils
 
-import tensorflow as tf
-import numpy as np
-
-from tensorboard.plugins import projector
-
-from random import shuffle
-from glob import glob
-import itertools
-import argparse
-import yaml
-import os
-
 root = os.path.dirname(os.path.abspath(__file__))
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
 
 def check_valid(text, max_length):
-    """
-    Validates a sentence string for inclusion in the training set
-    :param text: input string tensor (tf.string)
-    :param max_length: maximum sequence length (int)
-    :return: (bool)
+    """Validates a sentence string for inclusion in the training set
+
+    Parameters
+    ----------
+    text : tf.string
+        Input string tensor
+    max_length : int
+        Maximum sequence length
+
+    Returns
+    -------
+    bool
+        True if string is not empty and has a sequence shorter than the defined maximum length.
     """
 
     sequence_lengths = tf.shape(tf.strings.split(text, sep=''))
@@ -38,11 +46,18 @@ def check_valid(text, max_length):
 
 
 def load_text(data_files=None, max_length=-1):
-    """
-    Loads the training data from a text file
-    :param data_files: list of absolute paths to training data set files (list)
-    :param max_length: maximum sequence length to allow (int)
-    :return: (list)
+    """Loads the training data from a text file.
+
+    Parameters
+    ----------
+    data_files : list, optional
+        List of absolute paths to training data set files, by default None
+    max_length : int, optional
+        Maximum sequence length to allow, by default -1
+
+    Returns
+    -------
+    tf.data.Dataset
     """
 
     files = []
@@ -58,28 +73,48 @@ def load_text(data_files=None, max_length=-1):
         files = [os.path.join(path, f) for f in os.listdir(path) if os.path.isfile(os.path.join(path, f))]
 
     texts = tf.data.TextLineDataset(files)
-    texts = texts.map(lambda x: tf.strings.strip(x), num_parallel_calls=tf.data.experimental.AUTOTUNE)
+    texts = texts.map(tf.strings.strip, num_parallel_calls=tf.data.experimental.AUTOTUNE)
     return texts.filter(lambda x: check_valid(x, max_length))
 
 
 def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, max_allowed_seq=-1,
           layers=8, batch_size=32, num_epochs=10, data_files=None, model_path=".", use_attention=False,
           eval_sentences=None, orthogonal_cost=False):
-    """
-    Core training algorithm
-    :param model_folder: name of the folder to create for the trained model (str)
-    :param num_tokens: number of vocab tokens to keep from the training corpus (int, optional)
-    :param embedding_size: size of the word-embedding dimensions (int, optional)
-    :param num_hidden: number of hidden model dimensions (int, optional)
-    :param max_allowed_seq: the maximum sequence length allowed, model will truncate if longer (int)
-    :param layers: number of multi-head attention mechanisms for transformer model (int, optional)
-    :param batch_size: size of each mini-batch (int, optional)
-    :param num_epochs: number of training epochs (int, optional)
-    :param data_files: list of absolute paths to training data sets (list)
-    :param model_path: valid path to where the model will be saved (str)
-    :param use_attention: set to True to use the self-attention only model (bool)
-    :param eval_sentences: list of sentences to check the context angles (list)
-    :param orthogonal: set to True to add a cost to mutually parallel context vector (bool)
+    """Core training algorithm.
+
+    Parameters
+    ----------
+    model_folder : str
+        Name of the folder to create for the trained model
+    num_tokens : int, optional
+        Number of vocab tokens to keep from the training corpus, by default 10000
+    embedding_size : int, optional
+        Size of the word-embedding dimensions, by default 256
+    num_hidden : int, optional
+        Number of hidden model dimensions, by default 128
+    max_allowed_seq : int, optional
+        The maximum sequence length allowed, model will truncate if longer, by default -1
+    layers : int, optional
+        Number of multi-head attention mechanisms for transformer model, by default 8
+    batch_size : int, optional
+        Size of each mini-batch, by default 32
+    num_epochs : int, optional
+        Number of training epochs, by default 10
+    data_files : list, optional
+        List of absolute paths to training data sets, by default None
+    model_path : str, optional
+        Valid path to where the model will be saved, by default "."
+    use_attention : bool, optional
+        Set to True to use the self-attention only model, by default False
+    eval_sentences : List, optional
+        List of sentences to check the context angles, by default None
+    orthogonal_cost : bool, optional
+        Set to True to add a cost to mutually parallel context vector, by default False
+
+    Returns
+    -------
+    str
+        Model checkpoint file path.
     """
 
     # GPU config

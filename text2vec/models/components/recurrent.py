@@ -2,9 +2,36 @@ import tensorflow as tf
 
 
 class BidirectionalLSTM(tf.keras.layers.Layer):
+    """Bi-directional LSTM with the option to warm initialize with previous states.
+
+    Parameters
+    ----------
+    num_layers : int, optional
+        Number of hidden LSTM layers, by default 2
+    num_hidden : int, optional
+        Dimensionality of hidden LSTM layer weights, by default 32
+    return_states : bool, optional
+        Flag to set whether the internal LSTM states should be returned. This is useful for
+        warm initilizations, by default False
+
+    Examples
+    --------
+    ```python
+    import tensorflow as tf
+    from text2vec.models import BidirectionalLSTM
+
+    encoded_sequences = tf.random.uniform(shape=[4, 7, 12])
+    decoded_sequences = tf.random.uniform(shape=[4, 11, 12])
+
+    encode = BidirectionalLSTM(num_layers=2, num_hidden=16, return_states=True)
+    decode = BidirectionalLSTM(num_layers=2, num_hidden=16)
+    x, states = encode(encoded_sequences)
+    y = decode(decoded_sequences, initial_states=states)
+    ```
+    """
 
     def __init__(self, num_layers=2, num_hidden=32, return_states=False):
-        super(BidirectionalLSTM, self).__init__()
+        super().__init__()
         self.num_layers = num_layers
         self.return_states = return_states
         lstm = tf.keras.layers.LSTM
