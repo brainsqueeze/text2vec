@@ -52,7 +52,7 @@ class ScalarDotAttention(tf.keras.layers.Layer):
 
 class BahdanauAttention(tf.keras.layers.Layer):
     """Layer which computes the Bahdanau attention mechanism either as a self-attention or as
-    a encoder-decoder attentention.
+    a encoder-decoder attention.
 
     If only the `encoded` input is specified then self-attention will be computed.
 
@@ -109,7 +109,7 @@ class BahdanauAttention(tf.keras.layers.Layer):
 
 
 class SingleHeadAttention(tf.keras.layers.Layer):
-    """Layer which computes the single-head-attentinon mechanism as described in
+    """Layer which computes the single-head-attention mechanism as described in
     https://arxiv.org/abs/1706.03762.
 
     Query, key, value tensors are submitted to the layer as a tuple. Optional future-masking is available.
@@ -173,7 +173,7 @@ class SingleHeadAttention(tf.keras.layers.Layer):
 
 
 class MultiHeadAttention(tf.keras.layers.Layer):
-    """Layer which computes the multi-head-attentinon mechanism as described in
+    """Layer which computes the multi-head-attention mechanism as described in
     https://arxiv.org/abs/1706.03762.
 
     Query, key, value tensors are submitted to the layer as a tuple. Optional future-masking is available.

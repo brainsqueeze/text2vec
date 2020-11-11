@@ -12,7 +12,7 @@ def get_top_tokens(corpus, n_top=1000):
     corpus : tf.data.Dataset
         Entire dataset object
     n_top : int, optional
-        Number of most frequenct vocab terms to keep for training, by default 1000
+        Number of most frequent vocab terms to keep for training, by default 1000
 
     Returns
     -------

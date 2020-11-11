@@ -9,7 +9,7 @@ from text2vec.models import RecurrentDecoder
 
 
 class EncodingModel(tf.keras.Model):
-    """Wrapper model class to combine the encoder-decoder training pipelin.
+    """Wrapper model class to combine the encoder-decoder training pipeline.
 
         Parameters
         ----------

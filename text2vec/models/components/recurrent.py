@@ -12,7 +12,7 @@ class BidirectionalLSTM(tf.keras.layers.Layer):
         Dimensionality of hidden LSTM layer weights, by default 32
     return_states : bool, optional
         Flag to set whether the internal LSTM states should be returned. This is useful for
-        warm initilizations, by default False
+        warm initializations, by default False
 
     Examples
     --------

@@ -56,7 +56,7 @@ class TransformerEncoder(tf.keras.layers.Layer):
         self.h_drop = tf.keras.layers.Dropout(1 - hidden_keep_prob, name="HiddenStateDropout")
         self.layer_norm = LayerNorm()
 
-        self.positional_encode = PositionalEncoder(emb_dims=dims, max_sequence_length=max_sequence_len)
+        self.positional_encode = PositionalEncoder(emb_dims=dims, max_sequence_len=max_sequence_len)
         self.MHA = [MultiHeadAttention(emb_dims=dims, layers=layers, keep_prob=keep_prob) for _ in range(n_stacks)]
         self.FFN = [PositionWiseFFN(emb_dims=dims) for _ in range(n_stacks)]
         self.attention = BahdanauAttention(size=dims)
@@ -108,7 +108,7 @@ class TransformerDecoder(tf.keras.layers.Layer):
         self.layer_norm = LayerNorm()
         self.projection = TensorProjection()
 
-        self.positional_encode = PositionalEncoder(emb_dims=dims, max_sequence_length=max_sequence_len)
+        self.positional_encode = PositionalEncoder(emb_dims=dims, max_sequence_len=max_sequence_len)
         self.MHA = [MultiHeadAttention(emb_dims=dims, layers=layers, keep_prob=keep_prob) for _ in range(n_stacks)]
         self.FFN = [PositionWiseFFN(emb_dims=dims) for _ in range(n_stacks)]
 

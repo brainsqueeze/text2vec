@@ -104,17 +104,17 @@ class PositionalEncoder(tf.keras.layers.Layer):
     ```
     """
 
-    def __init__(self, emb_dims, max_sequence_length):
+    def __init__(self, emb_dims, max_sequence_len):
         super().__init__()
 
-        positions = np.arange(max_sequence_length).astype(np.float32)
+        positions = np.arange(max_sequence_len).astype(np.float32)
         column_range = np.arange(emb_dims).astype(np.float32)
         factor = np.power(1e5 ** (2 / emb_dims), column_range)
 
         even = np.sin(positions / factor[::2, None]).T
         odd = np.cos(positions / factor[1::2, None]).T
 
-        encoder = np.zeros(shape=(max_sequence_length, emb_dims), dtype=np.float32)
+        encoder = np.zeros(shape=(max_sequence_len, emb_dims), dtype=np.float32)
         encoder[:, ::2] = even
         encoder[:, 1::2] = odd
         self.encoder = tf.convert_to_tensor(encoder, dtype=tf.float32)
