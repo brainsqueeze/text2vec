@@ -3,15 +3,15 @@ import re
 TOKENIZER = re.compile(r"<\w+/>|\w+\'\w*|\w+|\$\d+|\d+|[,!?;.]")
 
 
-def clean_and_split(text, compiled_pattern=TOKENIZER):
+def clean_and_split(text: str, compiled_pattern=TOKENIZER):
     """Splits the input text in tokens based on a boundary pattern.
 
     Parameters
     ----------
     text : str
         Input text
-    compiled_pattern : re.Pattern, optional
-        Regular expression boundary pattern for tokenization, by default TOKENIZER
+    compiled_pattern : regex pattern, optional
+        Regular expression boundary pattern for tokenization, by default text2vec.preprocessing.text.TOKENIZER
 
     Returns
     -------
@@ -19,8 +19,9 @@ def clean_and_split(text, compiled_pattern=TOKENIZER):
         All RegEx tokens found by the boundary pattern.
     """
 
-    assert isinstance(compiled_pattern, re.Pattern)
     text = text.lower().strip()
+    if not hasattr(compiled_pattern, 'findall'):
+        return text.split()
     return compiled_pattern.findall(text)
 
 
