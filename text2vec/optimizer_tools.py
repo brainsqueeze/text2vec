@@ -18,9 +18,10 @@ class RampUpDecaySchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
         super().__init__()
         self.decay_rate = embedding_size ** -0.5
         self.dims = tf.cast(embedding_size, tf.float32)
-        self.warmup_steps = warmup_steps
+        self.warmup_steps = tf.cast(warmup_steps, tf.float32)
 
     def __call__(self, step):
+        step = tf.cast(step, tf.float32)
         arg1 = tf.math.rsqrt(step)
         arg2 = step * (self.warmup_steps ** -1.5)
         return tf.math.rsqrt(self.dims) * tf.math.minimum(arg1, arg2)
