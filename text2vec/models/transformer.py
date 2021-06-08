@@ -73,9 +73,7 @@ class TransformerEncoder(tf.keras.layers.Layer):
                 x = self.layer_norm(x)
 
             context = self.attention(x)
-            if training:
-                return x, context
-            return context
+            return x, context
 
 
 class TransformerDecoder(tf.keras.layers.Layer):

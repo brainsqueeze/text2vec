@@ -55,7 +55,7 @@ class RecurrentEncoder(tf.keras.layers.Layer):
 
             if training:
                 return x, context, states
-            return context
+            return x, context
 
 
 class RecurrentDecoder(tf.keras.layers.Layer):
