@@ -12,7 +12,8 @@ setup(
     install_requires=[
         "numpy",
         "pyyaml",
-        "tokenizers"
+        "tokenizers",
+        "datasets"
     ],
     extras_require=dict(
         serving=[
