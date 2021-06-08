@@ -125,7 +125,7 @@ class TransformerAutoEncoder(tf.keras.Model):
             return {"loss": loss, 'learning_rate': self.optimizer.learning_rate(self.optimizer.iterations)}
         return {"loss": loss}
 
-    def __call__(self, tokens, **kwargs):
+    def call(self, tokens, **kwargs):
         tokens = self.tokenizer(tf.squeeze(tokens))
         x_enc, enc_mask, _ = self.embed_layer(tokens)
         return self.encode_layer(x_enc, mask=enc_mask, training=False)
@@ -249,7 +249,7 @@ class LstmAutoEncoder(tf.keras.Model):
             return {"loss": loss, 'learning_rate': self.optimizer.learning_rate(self.optimizer.iterations)}
         return {"loss": loss}
 
-    def __call__(self, tokens, **kwargs):
+    def call(self, tokens, **kwargs):
         tokens = self.tokenizer(tf.squeeze(tokens))
         x_enc, enc_mask, _ = self.embed_layer(tokens)
         return self.encode_layer(x_enc, mask=enc_mask, training=False)

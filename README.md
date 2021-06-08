@@ -5,21 +5,24 @@ Models for contextual embedding of arbitrary texts.
 ## Setup
 ---
 
-For the GPU build of Tensorflow, if nightly features are not
-required it is recommended to install Tensorflow and its dependencies
-through Anaconda as
+To get started, one should have a flavor of TensorFlow installed, with
+version `>=2.4.1`. One can run
 ```bash
-conda install -c anaconda tensorflow-gpu
+pip install tensorflow>=2.4.1
+```
+If one wishes to run the examples, some additional dependencies
+from :hugging_face: will need to be installed. The full installation
+looks like
+```bash
+pip install tensorflow>=2.4.1 tokenizers datasets
 ```
 
 To install the core components as an import-able Python library
 simply run
 
 ```bash
-pip install 'text2vec[device] @ git+https://github.com/brainsqueeze/text2vec.git'
+pip install git+https://github.com/brainsqueeze/text2vec.git
 ```
-where `device` is either `cpu` or `gpu`, depending on which flavor
-of TensorFlow one wishes to install.
 
 ## Motivation
 ---
@@ -82,6 +85,9 @@ before computing logits.
 Both models are trained using Adam SGD with the learning-rate decay 
 program in [[2](https://arxiv.org/abs/1706.03762)].
 
+The pre-built auto-encoder models inherit from [tf.keras.Model](https://www.tensorflow.org/api_docs/python/tf/keras/Model), and as such they can be trained using the `fit` method. 
+An example of training on Wikitext data is available in the [examples folder](./examples/trainers/wiki_transformer.py). This uses HuggingFace [tokenizers](https://huggingface.co/docs/tokenizers/python/latest/) and [datasets](https://huggingface.co/docs/datasets/master/).
+
 Training the LSTM model can be initiated with
 ```bash
 text2vec_main --run=train --yaml_config=/path/to/config.yml
@@ -141,7 +147,12 @@ Text2vec includes a Python API with convenient classes for handling attention an
 
 ### Model components
 
-#### Pre-built Models
+#### Auto-encoders
+
+  - [text2vec.autoencoders.TransformerAutoEncoder](/text2vec/autoencoders.py#L13)
+  - [text2vec.autoencoders.LstmAutoEncoder](/text2vec/models/transformer.py#L134)
+
+#### Layers
 
   - [text2vec.models.TransformerEncoder](/text2vec/models/transformer.py#L11)
   - [text2vec.models.TransformerDecoder](/text2vec/models/transformer.py#L81)
@@ -150,8 +161,10 @@ Text2vec includes a Python API with convenient classes for handling attention an
 
 #### Input and Word-Embeddings Components
 
-  - [text2vec.models.TextInput](/text2vec/models/components/feeder.py#L35)
   - [text2vec.models.Tokenizer](/text2vec/models/components/feeder.py#L4)
+  - [text2vec.models.Embed](/text2vec/models/components/text_inputs.py#L4)
+  - [text2vec.models.TokenEmbed](/text2vec/models/components/text_inputs.py#L82)
+  - [text2vec.models.TextInput](/text2vec/models/components/feeder.py#L35) (DEPRECATED)
 
 #### Attention Components
 
@@ -176,7 +189,9 @@ Text2vec includes a Python API with convenient classes for handling attention an
 
 #### Dataset Pre-processing
   
-  - [text2vec.preprocessing.get_top_tokens](/text2vec/preprocessing/utils.py#L5)
+  - [text2vec.preprocessing.utils.get_top_tokens](/text2vec/preprocessing/utils.py#L9)
+  - [text2vec.preprocessing.utils.check_valid](/text2vec/preprocessing/utils.py#L46)
+  - [text2vec.preprocessing.utils.load_text_files](/text2vec/preprocessing/utils.py#L68)
 
 #### String Pre-processing
 
