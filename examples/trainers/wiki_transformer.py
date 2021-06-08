@@ -1,4 +1,6 @@
 from typing import Generator, List, Tuple, Union
+from nltk.tokenize import PunktSentenceTokenizer
+import os
 
 import datasets
 import tokenizers
@@ -15,6 +17,9 @@ from tensorboard.plugins import projector
 
 from text2vec.autoencoders import TransformerAutoEncoder
 from text2vec.optimizer_tools import RampUpDecaySchedule
+
+os.environ["TOKENIZERS_PARALLELISM"] = "true"
+sent_tokenizer = PunktSentenceTokenizer().tokenize
 
 
 def train_tokenizer() -> Tuple[tokenizers.Tokenizer, Generator, int]:
@@ -53,13 +58,16 @@ def train_tokenizer() -> Tuple[tokenizers.Tokenizer, Generator, int]:
     def generator():
         for record in dataset:
             if record['text'].strip() != '':
-                yield record['text']
+                for sentence in sent_tokenizer(record['text']):
+                    yield sentence
 
-    return tokenizer, generator, len(dataset)
+    data = tf.data.Dataset.from_generator(generator, output_signature=(tf.TensorSpec(shape=(None), dtype=tf.string)))
+    data = data.map(tf.strings.strip, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+    return tokenizer, data
 
 
 def main(save_path: str):
-    tokenizer, data_gen, cardinality = train_tokenizer()
+    tokenizer, data = train_tokenizer()
     tokenizer.save(path=f"{save_path}/tokenizer.json")
 
     with open(f"{save_path}/metadata.tsv", "w") as tsv:
@@ -85,10 +93,6 @@ def main(save_path: str):
 
         return tf.py_function(token_mapper, inp=[x], Tout=[tf.string, tf.string])
 
-    data = tf.data.Dataset.from_generator(data_gen, output_signature=(tf.TensorSpec(shape=(None), dtype=tf.string)))
-    data = data.map(tf.strings.strip, num_parallel_calls=tf.data.experimental.AUTOTUNE)
-    data = data.map(encode, num_parallel_calls=tf.data.experimental.AUTOTUNE)
-
     model = TransformerAutoEncoder(
         max_sequence_len=512,
         embedding_size=256,
@@ -97,7 +101,6 @@ def main(save_path: str):
         hidden_keep_prob=0.5
     )
     model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=RampUpDecaySchedule(embedding_size=256)))
-    model.fit(x=data.prefetch(10).batch(16), epochs=1)
     checkpoint = tf.train.Checkpoint(Classifier=model, optimizer=model.optimizer)
     checkpoint_manager = tf.train.CheckpointManager(checkpoint, save_path, max_to_keep=3)
 
@@ -109,15 +112,16 @@ def main(save_path: str):
     reader = tf.train.load_checkpoint(save_path)
     embeddings_config.tensor_name = [key for key in reader.get_variable_to_shape_map() if "embedding" in key][0]
     embeddings_config.metadata_path = f"{save_path}/metadata.tsv"
-    projector.visualize_embeddings(logdir=f"{save_path}", config=config)
+    projector.visualize_embeddings(logdir=save_path, config=config)
 
+    data = data.map(encode, num_parallel_calls=tf.data.experimental.AUTOTUNE)
     model.fit(
-        x=data.prefetch(8).batch(16),
+        x=data.prefetch(8).batch(64),
         callbacks=[
             tf.keras.callbacks.TensorBoard(
                 log_dir=save_path,
                 write_graph=True,
-                update_freq=cardinality // 100
+                update_freq=100
             ),
             tf.keras.callbacks.LambdaCallback(on_epoch_end=lambda epoch, logs: checkpoint_manager.save())
         ],
