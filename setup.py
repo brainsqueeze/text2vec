@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="text2vec",
-    version="0.4.5",
+    version="1.0.0",
     description="Building blocks for text vectorization and embedding",
     author="Dave Hollander",
     author_url="https://github.com/brainsqueeze",
@@ -11,7 +11,8 @@ setup(
     license="BSD 2-Clause License",
     install_requires=[
         "numpy",
-        "pyyaml"
+        "pyyaml",
+        "tokenizers"
     ],
     extras_require=dict(
         serving=[
@@ -19,9 +20,7 @@ setup(
             "flask-cors",
             "nltk",
             "tornado"
-        ],
-        gpu="tensorflow-gpu>=2.1.0",
-        cpu="tensorflow>=2.1.0"
+        ]
     ),
     packages=find_packages(exclude=["bin"]),
     entry_points={
