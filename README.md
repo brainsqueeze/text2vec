@@ -11,7 +11,7 @@ version `>=2.4.1`. One can run
 pip install tensorflow>=2.4.1
 ```
 If one wishes to run the examples, some additional dependencies
-from :hugging_face: will need to be installed. The full installation
+from HuggingFace will need to be installed. The full installation
 looks like
 ```bash
 pip install tensorflow>=2.4.1 tokenizers datasets
