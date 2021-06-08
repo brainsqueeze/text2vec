@@ -47,7 +47,7 @@ class TransformerAutoEncoder(tf.keras.Model):
     lookup = {'string': 0, 'is': 1, 'example': 2, '<unk>': 3}
     model = TransformerAutoEncoder(token_hash=lookup, max_sequence_len=10, embedding_size=16)
     text = tf.constant(["sample string .", "this is a second example ."])
-    encoded, context_vectors = model(text, training=True, return_vectors=True)
+    encoded, context_vectors = model(text)
     ```
     """
 
@@ -132,6 +132,47 @@ class TransformerAutoEncoder(tf.keras.Model):
 
 
 class LstmAutoEncoder(tf.keras.Model):
+    """Wrapper model class to combine the LSTM based encoder-decoder training pipeline.
+
+    Parameters
+    ----------
+    max_sequence_len : int
+        Longest sequence seen at training time.
+    embedding_size : int
+        Dimensionality of the word-embeddings.
+    num_hidden : int, optional
+        Size of the hidden LSTM state, by default 64
+    token_hash : dict, optional
+        Token -> integer vocabulary lookup, by default None
+    vocab_size : int, optional
+        Size of the vocabulary. Set this if pre-computing token IDs to pass to the model, by default None
+    unknown_token : str, optional
+        The placeholder value for OOV terms, by default '<unk>'
+    sep : int, optional
+        Token separator by default ' '
+    input_keep_prob : float, optional
+        Value between 0 and 1.0 which determines `1 - dropout_rate`, by default 1.0
+    hidden_keep_prob : float, optional
+        Hidden states dropout. Value between 0 and 1.0 which determines `1 - dropout_rate`, by default 1.0
+
+    Raises
+    ------
+    ValueError
+        Raised if neither a vocab dictionary  or a vocab size is provided.
+
+
+    Examples
+    --------
+    ```python
+    import tensorflow as tf
+    from text2vec.autoencoders import LstmAutoEncoder
+
+    lookup = {'string': 0, 'is': 1, 'example': 2, '<unk>': 3}
+    model = LstmAutoEncoder(token_hash=lookup, max_sequence_len=10, embedding_size=16)
+    text = tf.constant(["sample string .", "this is a second example ."])
+    encoded, context_vectors = model(text)
+    ```
+    """
 
     def __init__(self, max_sequence_len: int, embedding_size: int, num_hidden: int = 64,
                  token_hash: dict = None, vocab_size: int = None, unknown_token: str = '<unk>', sep: int = ' ',
