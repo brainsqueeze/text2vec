@@ -1,4 +1,3 @@
-from glob import glob
 import itertools
 import argparse
 import os
@@ -15,65 +14,11 @@ from text2vec.training_tools import sequence_cost
 from text2vec.training_tools import vector_cost
 from text2vec.optimizer_tools import RampUpDecaySchedule
 from text2vec.preprocessing.text import clean_and_split
-from text2vec.preprocessing import get_top_tokens
+from text2vec.preprocessing import utils as data_tools
 from . import utils
 
 root = os.path.dirname(os.path.abspath(__file__))
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
-
-
-def check_valid(text, max_length):
-    """Validates a sentence string for inclusion in the training set
-
-    Parameters
-    ----------
-    text : tf.string
-        Input string tensor
-    max_length : int
-        Maximum sequence length
-
-    Returns
-    -------
-    bool
-        True if string is not empty and has a sequence shorter than the defined maximum length.
-    """
-
-    sequence_lengths = tf.shape(tf.strings.split(text, sep=''))
-    if max_length < -1:
-        return sequence_lengths is not None
-    return sequence_lengths is not None and sequence_lengths[0] <= max_length
-
-
-def load_text(data_files=None, max_length=-1):
-    """Loads the training data from a text file.
-
-    Parameters
-    ----------
-    data_files : list, optional
-        List of absolute paths to training data set files, by default None
-    max_length : int, optional
-        Maximum sequence length to allow, by default -1
-
-    Returns
-    -------
-    tf.data.Dataset
-    """
-
-    files = []
-    if isinstance(data_files, list) and len(data_files) > 0:
-        for f in data_files:
-            if '*' in f:
-                files.extend(glob(f))
-                continue
-            if os.path.isfile(f):
-                files.append(f)
-    else:
-        path = f"{root}/../../text2vec/data/"
-        files = [os.path.join(path, f) for f in os.listdir(path) if os.path.isfile(os.path.join(path, f))]
-
-    texts = tf.data.TextLineDataset(files)
-    texts = texts.map(tf.strings.strip, num_parallel_calls=tf.data.experimental.AUTOTUNE)
-    return texts.filter(lambda x: check_valid(x, max_length))
 
 
 def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, max_allowed_seq=-1,
@@ -127,11 +72,10 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
         os.mkdir(log_dir)
 
     utils.log("Fetching corpus and creating data pipeline")
-    corpus = load_text(data_files=data_files, max_length=max_allowed_seq)
-    assert isinstance(corpus, tf.data.Dataset)
+    corpus = data_tools.load_text_files(data_files=data_files, max_length=max_allowed_seq)
 
     utils.log("Fitting embedding lookup", end="...")
-    hash_map, max_seq_len, train_set_size = get_top_tokens(corpus, n_top=num_tokens)
+    hash_map, max_seq_len, train_set_size = data_tools.get_top_tokens(corpus, n_top=num_tokens)
     print(f"{train_set_size} sentences. max sequence length: {max_seq_len}")
 
     with open(log_dir + "/metadata.tsv", "w") as tsv:
