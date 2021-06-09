@@ -123,7 +123,7 @@ class TransformerAutoEncoder(tf.keras.Model):
 
         if hasattr(self.optimizer, 'learning_rate') and callable(self.optimizer.learning_rate):
             return {"loss": loss, 'learning_rate': self.optimizer.learning_rate(self.optimizer.iterations)}
-        return {"loss": loss}
+        return {"loss": loss, 'learning_rate': self.optimizer.learning_rate}
 
     def call(self, tokens, **kwargs):
         tokens = self.tokenizer(tf.squeeze(tokens))
@@ -247,7 +247,7 @@ class LstmAutoEncoder(tf.keras.Model):
 
         if hasattr(self.optimizer, 'learning_rate') and callable(self.optimizer.learning_rate):
             return {"loss": loss, 'learning_rate': self.optimizer.learning_rate(self.optimizer.iterations)}
-        return {"loss": loss}
+        return {"loss": loss, 'learning_rate': self.optimizer.learning_rate}
 
     def call(self, tokens, **kwargs):
         tokens = self.tokenizer(tf.squeeze(tokens))
