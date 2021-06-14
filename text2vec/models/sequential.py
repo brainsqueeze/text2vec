@@ -47,7 +47,7 @@ class RecurrentEncoder(tf.keras.layers.Layer):
         self.bi_lstm = BidirectionalLSTM(num_layers=num_layers, num_hidden=num_hidden, return_states=True)
         self.attention = BahdanauAttention(size=2 * num_hidden)
 
-    def __call__(self, x, mask, training=False, **kwargs):
+    def call(self, x, mask, training=False, **kwargs):
         with tf.name_scope("RecurrentEncoder"):
             x = self.drop(x, training=training)
             x, states = self.bi_lstm(x)
@@ -90,7 +90,7 @@ class RecurrentDecoder(tf.keras.layers.Layer):
         self.bi_lstm = BidirectionalLSTM(num_layers=num_layers, num_hidden=num_hidden, return_states=False)
         self.dense = tf.keras.layers.Dense(units=dims, activation=tf.nn.relu)
 
-    def __call__(self, x_enc, enc_mask, x_dec, dec_mask, context, attention, training=False, **kwargs):
+    def call(self, x_enc, enc_mask, x_dec, dec_mask, context, attention, training=False, **kwargs):
         with tf.name_scope("RecurrentDecoder"):
             initial_state = kwargs.get("initial_state")
             x = self.drop(x_dec, training=training)

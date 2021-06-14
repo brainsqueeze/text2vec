@@ -81,7 +81,7 @@ class EncodingModel(tf.keras.Model):
             self.encode_layer = TransformerEncoder(n_stacks=n_stacks, layers=layers, **params)
             self.decode_layer = TransformerDecoder(n_stacks=n_stacks, layers=layers, **params)
 
-    def __call__(self, sentences, training=False, return_vectors=False):
+    def call(self, sentences, training=False, return_vectors=False):
         tokens = self.tokenizer(sentences)  # turn sentences into ragged tensors of tokens
 
         # turn incoming sentences into relevant tensor batches

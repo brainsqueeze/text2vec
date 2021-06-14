@@ -32,7 +32,7 @@ class LayerNorm(tf.keras.layers.Layer):
         self.scale = tf.constant(scale, dtype=tf.float32)
         self.bias = tf.constant(bias, dtype=tf.float32)
 
-    def __call__(self, x):
+    def call(self, x):
         with tf.name_scope("LayerNorm"):
             mean = tf.reduce_mean(x, axis=-1, keepdims=True)
             variance = tf.reduce_mean(tf.square(x - mean), axis=-1, keepdims=True)
@@ -62,7 +62,7 @@ class TensorProjection(tf.keras.layers.Layer):
     def __init__(self):
         super().__init__(name="TensorProjection")
 
-    def __call__(self, x, projection_vector):
+    def call(self, x, projection_vector):
         with tf.name_scope("TensorProjection"):
             inner_product = tf.einsum("ijk,ik->ij", x, projection_vector)
             time_steps = tf.shape(x)[1]
@@ -119,7 +119,7 @@ class PositionalEncoder(tf.keras.layers.Layer):
         encoder[:, 1::2] = odd
         self.encoder = tf.convert_to_tensor(encoder, dtype=tf.float32)
 
-    def __call__(self, x, mask):
+    def call(self, x, mask):
         with tf.name_scope('PositionalEncoder'):
             time_steps = tf.shape(x)[1]
             return tf.einsum('ijk,ij->ijk', x + self.encoder[:time_steps, :], mask)

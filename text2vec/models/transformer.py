@@ -61,7 +61,7 @@ class TransformerEncoder(tf.keras.layers.Layer):
         self.FFN = [PositionWiseFFN(emb_dims=dims) for _ in range(n_stacks)]
         self.attention = BahdanauAttention(size=dims)
 
-    def __call__(self, x, mask, training=False):
+    def call(self, x, mask, training=False):
         with tf.name_scope("TransformerEncoder"):
             x = self.positional_encode(x, mask)
             x = self.drop(x, training=training)
@@ -110,7 +110,7 @@ class TransformerDecoder(tf.keras.layers.Layer):
         self.MHA = [MultiHeadAttention(emb_dims=dims, layers=layers, keep_prob=keep_prob) for _ in range(n_stacks)]
         self.FFN = [PositionWiseFFN(emb_dims=dims) for _ in range(n_stacks)]
 
-    def __call__(self, x_enc, enc_mask, x_dec, dec_mask, context, attention, training=False, **kwargs):
+    def call(self, x_enc, enc_mask, x_dec, dec_mask, context, attention, training=False, **kwargs):
         with tf.name_scope("TransformerDecoder"):
             x_dec = self.positional_encode(x_dec, dec_mask)
             x_dec = self.drop(x_dec, training=training)

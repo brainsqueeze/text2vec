@@ -36,10 +36,10 @@ class ScalarDotAttention(tf.keras.layers.Layer):
     def __init__(self):
         super().__init__(name="ScalarDotAttention")
 
-    def __call__(self, query, key, value, mask_future=False):
+    def call(self, query, key, value, mask_future=False):
         with tf.name_scope("ScalarDotAttention"):
             numerator = tf.einsum('ijk,ilk->ijl', query, key)
-            denominator = tf.sqrt(tf.cast(tf.shape(key)[1], dtype=tf.float32))
+            denominator = tf.sqrt(tf.cast(tf.shape(key)[1], tf.float32))
 
             if mask_future:
                 upper = (1 + 1e9) * tf.linalg.band_part(tf.ones_like(numerator), num_lower=0, num_upper=-1)
@@ -94,7 +94,7 @@ class BahdanauAttention(tf.keras.layers.Layer):
         self.B = tf.Variable(tf.zeros(shape=[size]), name="B", dtype=tf.float32, trainable=True)
         self.U = tf.Variable(tf.zeros(shape=[size]), name="U", dtype=tf.float32, trainable=True)
 
-    def __call__(self, encoded, decoded=None):
+    def call(self, encoded, decoded=None):
         with tf.name_scope("BahdanauAttention"):
             if decoded is None:
                 score = tf.tanh(tf.tensordot(encoded, self.W, axes=[-1, 0]) + self.B)
@@ -158,7 +158,7 @@ class SingleHeadAttention(tf.keras.layers.Layer):
         self.dropout = tf.keras.layers.Dropout(1 - keep_prob)
         self.dot_attention = ScalarDotAttention()
 
-    def __call__(self, inputs, mask_future=False, training=False):
+    def call(self, inputs, mask_future=False, training=False):
         with tf.name_scope("SingleHeadAttention"):
             queries, keys, values = inputs
 
@@ -217,8 +217,8 @@ class MultiHeadAttention(tf.keras.layers.Layer):
 
         self.dense = tf.keras.layers.Dense(units=emb_dims, use_bias=False)
 
-    def __call__(self, inputs, mask_future=False, training=False):
+    def call(self, inputs, mask_future=False, training=False):
         with tf.name_scope("MultiHeadAttention"):
             heads = [layer(inputs, mask_future=mask_future, training=training) for layer in self.layer_heads]
-            total_head = tf.concat(heads, axis=-1)
+            total_head = tf.concat(heads, -1)
             return self.dense(total_head)

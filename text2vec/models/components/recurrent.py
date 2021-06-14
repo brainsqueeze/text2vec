@@ -58,7 +58,7 @@ class BidirectionalLSTM(tf.keras.layers.Layer):
 
         return fwd_inputs, bwd_inputs
 
-    def __call__(self, inputs, initial_states=None, training=False):
+    def call(self, inputs, initial_states=None, training=False):
         with tf.name_scope("BidirectionalLSTM"):
             layer = 0
             for forward, backward in zip(self.FWD, self.BWD):
