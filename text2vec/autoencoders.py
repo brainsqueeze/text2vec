@@ -127,8 +127,8 @@ class TransformerAutoEncoder(tf.keras.Model):
 
     def call(self, tokens, **kwargs):
         tokens = self.tokenizer(tf.squeeze(tokens))
-        x_enc, enc_mask, _ = self.embed_layer(tokens)
-        return self.encode_layer(x_enc, mask=enc_mask, training=False)
+        x_enc, enc_mask, _ = self.embed_layer(tokens, **kwargs)
+        return self.encode_layer(x_enc, mask=enc_mask, **kwargs)
 
 
 class LstmAutoEncoder(tf.keras.Model):
@@ -251,5 +251,5 @@ class LstmAutoEncoder(tf.keras.Model):
 
     def call(self, tokens, **kwargs):
         tokens = self.tokenizer(tf.squeeze(tokens))
-        x_enc, enc_mask, _ = self.embed_layer(tokens)
-        return self.encode_layer(x_enc, mask=enc_mask, training=False)
+        x_enc, enc_mask, _ = self.embed_layer(tokens, **kwargs)
+        return self.encode_layer(x_enc, mask=enc_mask, **kwargs)
