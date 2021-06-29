@@ -104,7 +104,7 @@ class BahdanauAttention(tf.keras.layers.Layer):
                 return tf.einsum('ilk,il->ik', encoded, alphas, name="context-vector")
 
             score = tf.einsum("ijm,mn,ikn->ijk", encoded, self.W, decoded)
-            alphas = tf.reduce_mean(score, axis=-1)
+            alphas = tf.reduce_mean(score, axis=1)
             alphas = tf.nn.softmax(alphas)
             return tf.einsum('ilk,il->ik', decoded, alphas)
 
