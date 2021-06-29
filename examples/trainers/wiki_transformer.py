@@ -67,12 +67,15 @@ def train_tokenizer() -> Tuple[tokenizers.Tokenizer, Generator, int]:
 
 
 def main(save_path: str):
+    if not os.path.isdir(save_path):
+        os.mkdir(save_path)
+
     tokenizer, data = train_tokenizer()
     tokenizer.save(path=f"{save_path}/tokenizer.json")
+    tokenizer.enable_truncation(2 * 512 + 1)  # encoding + decoding + [SEP] token
 
     with open(f"{save_path}/metadata.tsv", "w") as tsv:
         for token, _ in sorted(tokenizer.get_vocab().items(), key=lambda s: s[-1]):
-            # since tensorflow converts strings to bytes we will decode from UTF-8 here for display purposes
             tsv.write(f"{token}\n")
 
     def encode(x):
@@ -133,4 +136,4 @@ def main(save_path: str):
 
 
 if __name__ == '__main__':
-    main(save_path='./')
+    main(save_path='./wiki_t2v')
