@@ -39,7 +39,7 @@ class ScalarDotAttention(tf.keras.layers.Layer):
     def call(self, query, key, value, mask_future=False):
         with tf.name_scope("ScalarDotAttention"):
             numerator = tf.einsum('ijk,ilk->ijl', query, key)
-            denominator = tf.sqrt(tf.cast(tf.shape(key)[1], tf.float32))
+            denominator = tf.sqrt(tf.cast(tf.shape(key)[-1], tf.float32))
 
             if mask_future:
                 upper = (1 + 1e9) * tf.linalg.band_part(tf.ones_like(numerator), num_lower=0, num_upper=-1)
@@ -69,43 +69,47 @@ class BahdanauAttention(tf.keras.layers.Layer):
     import tensorflow as tf
     from text2vec.models import BahdanauAttention
 
-    encoded_sequences = tf.random.uniform(shape=[4, 7, 12])
-    decoded_sequences = tf.random.uniform(shape=[4, 11, 12])
-
-    dims = tf.shape(encoded)[-1]
+    dims = 12
+    encoded_sequences = tf.random.uniform(shape=[4, 7, dims])
+    decoded_sequences = tf.random.uniform(shape=[4, 11, dims])
     attention = BahdanauAttention(dims)
 
-    # self-attention
-    attention(encoded_sequences, decoded_sequences)
+    # self attention
+    attention(encoded_sequences)
 
-    # future masking
+    # mutual attention
     attention(encoded_sequences, decoded_sequences)
     ```
     """
 
     def __init__(self, size):
         super().__init__(name="BahdanauAttention")
+
+        initializer = tf.keras.initializers.GlorotUniform()
         self.W = tf.Variable(
-            tf.random.truncated_normal([size, size], mean=-0.01, stddev=0.01),
+            initializer(shape=(size, size)),
             name='weight',
             dtype=tf.float32,
             trainable=True
         )
         self.B = tf.Variable(tf.zeros(shape=[size]), name="B", dtype=tf.float32, trainable=True)
-        self.U = tf.Variable(tf.zeros(shape=[size]), name="U", dtype=tf.float32, trainable=True)
+        self.U = tf.Variable(initializer(shape=[size]), name="U", dtype=tf.float32, trainable=True)
 
     def call(self, encoded, decoded=None):
         with tf.name_scope("BahdanauAttention"):
             if decoded is None:
-                score = tf.tanh(tf.tensordot(encoded, self.W, axes=[-1, 0]) + self.B)
+                score = tf.math.tanh(tf.tensordot(encoded, self.W, axes=[-1, 0]) + self.B)
                 score = tf.reduce_sum(self.U * score, axis=-1)
                 alphas = tf.nn.softmax(score, name="attention-weights")
-                return tf.reduce_sum(encoded * tf.expand_dims(alphas, -1), 1, name="context-vector")
+                return tf.einsum('ilk,il->ik', encoded, alphas, name="context-vector")
 
             score = tf.einsum("ijm,mn,ikn->ijk", encoded, self.W, decoded)
-            alphas = tf.nn.softmax(score)
-            alphas = tf.reduce_sum(alphas, axis=1)
-            return tf.reduce_sum(decoded * tf.expand_dims(alphas, -1), axis=1)
+            # alphas = tf.nn.softmax(score)
+            # alphas = tf.reduce_sum(alphas, axis=1)
+            # return tf.reduce_sum(decoded * tf.expand_dims(alphas, -1), axis=1)
+            alphas = tf.reduce_sum(score, axis=1)
+            alphas = tf.nn.softmax(alphas)
+            return tf.einsum('ilk,il->ik', decoded, alphas)
 
 
 class SingleHeadAttention(tf.keras.layers.Layer):
@@ -150,11 +154,11 @@ class SingleHeadAttention(tf.keras.layers.Layer):
 
         dims = emb_dims
         key_dims = emb_dims // layers
-        kernel = tf.random.truncated_normal([dims, key_dims], mean=-0.01, stddev=0.01)
+        initializer = tf.keras.initializers.GlorotUniform()
 
-        self.WQ = tf.Variable(kernel, name="WQ", dtype=tf.float32, trainable=True)
-        self.WK = tf.Variable(kernel, name="WK", dtype=tf.float32, trainable=True)
-        self.WV = tf.Variable(kernel, name="WV", dtype=tf.float32, trainable=True)
+        self.WQ = tf.Variable(initializer(shape=(dims, key_dims)), name="WQ", dtype=tf.float32, trainable=True)
+        self.WK = tf.Variable(initializer(shape=(dims, key_dims)), name="WK", dtype=tf.float32, trainable=True)
+        self.WV = tf.Variable(initializer(shape=(dims, key_dims)), name="WV", dtype=tf.float32, trainable=True)
         self.dropout = tf.keras.layers.Dropout(1 - keep_prob)
         self.dot_attention = ScalarDotAttention()
 
