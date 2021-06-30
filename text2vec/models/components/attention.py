@@ -101,12 +101,14 @@ class BahdanauAttention(tf.keras.layers.Layer):
                 score = tf.math.tanh(tf.tensordot(encoded, self.W, axes=[-1, 0]) + self.B)
                 score = tf.reduce_sum(self.U * score, axis=-1)
                 alphas = tf.nn.softmax(score, name="attention-weights")
-                return tf.einsum('ilk,il->ik', encoded, alphas, name="context-vector")
+                encoded = encoded * tf.expand_dims(alphas, axis=-1)
+                return encoded, tf.reduce_sum(encoded, axis=1, name="context-vector")
 
             score = tf.einsum("ijm,mn,ikn->ijk", encoded, self.W, decoded)
             alphas = tf.reduce_mean(score, axis=1)
             alphas = tf.nn.softmax(alphas)
-            return tf.einsum('ilk,il->ik', decoded, alphas)
+            decoded = decoded * tf.expand_dims(alphas, axis=-1)
+            return decoded, tf.reduce_sum(decoded, axis=1)
 
 
 class SingleHeadAttention(tf.keras.layers.Layer):

@@ -65,14 +65,15 @@ class TransformerEncoder(tf.keras.layers.Layer):
         with tf.name_scope("TransformerEncoder"):
             x = self.positional_encode(x, mask)
             x = self.drop(x, training=training)
+            mask = tf.expand_dims(mask, axis=-1)
 
             for mha, ffn in zip(self.MHA, self.FFN):
-                x = self.h_drop(mha([x] * 3, training=training), training=training) + x
+                x = self.h_drop(mha([x * mask] * 3, training=training), training=training) + x
                 x = self.layer_norm(x)
-                x = self.h_drop(ffn(x), training=training) + x
+                x = self.h_drop(ffn(x * mask), training=training) + x
                 x = self.layer_norm(x)
 
-            context = self.attention(x)
+            x, context = self.attention(x * mask)
             return x, context
 
 
@@ -114,16 +115,22 @@ class TransformerDecoder(tf.keras.layers.Layer):
         with tf.name_scope("TransformerDecoder"):
             x_dec = self.positional_encode(x_dec, dec_mask)
             x_dec = self.drop(x_dec, training=training)
+            enc_mask = tf.expand_dims(enc_mask, axis=-1)
+            dec_mask = tf.expand_dims(dec_mask, axis=-1)
 
             for mha, ffn in zip(self.MHA, self.FFN):
-                x_dec = self.h_drop(mha([x_dec] * 3, mask_future=True, training=training), training=training) + x_dec
+                x_dec = self.h_drop(mha(
+                    [x_dec * dec_mask] * 3,
+                    mask_future=True,
+                    training=training
+                ), training=training) + x_dec
                 x_dec = self.layer_norm(x_dec)
 
-                cross_context = attention(encoded=x_enc, decoded=x_dec)
+                x_dec, cross_context = attention(encoded=x_enc * enc_mask, decoded=x_dec * dec_mask)
                 x_dec = self.h_drop(self.projection(x_dec, projection_vector=cross_context), training=training) + x_dec
 
                 x_dec = self.layer_norm(x_dec)
-                x_dec = self.h_drop(ffn(x_dec), training=training) + x_dec
+                x_dec = self.h_drop(ffn(x_dec * dec_mask), training=training) + x_dec
                 x_dec = self.layer_norm(x_dec)
                 x_dec = self.h_drop(self.projection(x_dec, projection_vector=context), training=training) + x_dec
             return x_dec
