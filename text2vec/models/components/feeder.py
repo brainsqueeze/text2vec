@@ -109,6 +109,6 @@ class TextInput(tf.keras.layers.Layer):
             x = x.to_tensor(0)
 
             seq_lengths = hashed.row_lengths()
-            time_steps = tf.cast(tf.reduce_max(seq_lengths), dtype=tf.int32)
+            time_steps = tf.cast(tf.reduce_max(seq_lengths), tf.int32)
             mask = tf.sequence_mask(lengths=seq_lengths, maxlen=time_steps, dtype=tf.float32)
             return x, mask, time_steps

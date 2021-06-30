@@ -89,13 +89,17 @@ def main():
     data = data.map(encode, num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
     model = TransformerAutoEncoder(
-        max_sequence_len=256,
-        embedding_size=256,
+        max_sequence_len=512,
+        embedding_size=128,
         token_hash=tokenizer.get_vocab(),
         input_keep_prob=0.7,
         hidden_keep_prob=0.5
     )
-    model.compile(optimizer=tf.keras.optimizers.Adam(0.01), run_eagerly=True)
+    model.compile(
+        optimizer=tf.keras.optimizers.Adam(),
+        loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True, reduction=tf.keras.losses.Reduction.NONE),
+        run_eagerly=True
+    )
     model.fit(x=data.prefetch(10).batch(16), epochs=1)
 
     model(['here is a sentence', 'try another one'])
