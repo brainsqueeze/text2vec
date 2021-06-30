@@ -98,12 +98,15 @@ def main(save_path: str):
 
     model = TransformerAutoEncoder(
         max_sequence_len=512,
-        embedding_size=256,
+        embedding_size=128,
         token_hash=tokenizer.get_vocab(),
         input_keep_prob=0.7,
         hidden_keep_prob=0.5
     )
-    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=RampUpDecaySchedule(embedding_size=256)))
+    model.compile(
+        optimizer=tf.keras.optimizers.Adam(learning_rate=RampUpDecaySchedule(embedding_size=128)),
+        loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True, reduction=tf.keras.losses.Reduction.NONE)
+    )
     checkpoint = tf.train.Checkpoint(Classifier=model, optimizer=model.optimizer)
     checkpoint_manager = tf.train.CheckpointManager(checkpoint, save_path, max_to_keep=3)
 
