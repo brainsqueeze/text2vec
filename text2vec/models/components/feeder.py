@@ -107,6 +107,7 @@ class TextInput(tf.keras.layers.Layer):
                 return x
 
             x = x.to_tensor(0)
+            x = x * tf.math.sqrt(tf.cast(tf.shape(self.embeddings)[-1], tf.float32))  # sqrt(embedding_size)
 
             seq_lengths = hashed.row_lengths()
             time_steps = tf.cast(tf.reduce_max(seq_lengths), tf.int32)
