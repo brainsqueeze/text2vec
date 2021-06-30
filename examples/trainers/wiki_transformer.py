@@ -1,5 +1,4 @@
 from typing import Generator, List, Tuple, Union
-from nltk.tokenize import PunktSentenceTokenizer
 import os
 
 import datasets
@@ -10,6 +9,7 @@ from tokenizers import normalizers
 from tokenizers import pre_tokenizers
 from tokenizers import processors
 from tokenizers import trainers
+from nltk.tokenize import PunktSentenceTokenizer
 
 import numpy as np
 import tensorflow as tf
