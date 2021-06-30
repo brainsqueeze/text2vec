@@ -225,8 +225,8 @@ class LstmAutoEncoder(tf.keras.Model):
 
                 decoding_tok, dec_mask, dec_time_steps = self.embed_layer(decoding_tok)
                 decoding_tok = self.decode_layer(
-                    x_enc=None,
-                    enc_mask=None,
+                    x_enc=x_enc,
+                    enc_mask=enc_mask,
                     x_dec=decoding_tok,
                     dec_mask=dec_mask,
                     context=context,

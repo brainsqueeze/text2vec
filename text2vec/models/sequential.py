@@ -49,9 +49,10 @@ class RecurrentEncoder(tf.keras.layers.Layer):
 
     def call(self, x, mask, training=False, **kwargs):
         with tf.name_scope("RecurrentEncoder"):
+            mask = tf.expand_dims(mask, axis=-1)
             x = self.drop(x, training=training)
-            x, states = self.bi_lstm(x)
-            context = self.attention(x)
+            x, states = self.bi_lstm(x * mask, training=training)
+            x, context = self.attention(x * mask)
 
             if training:
                 return x, context, states
@@ -92,12 +93,15 @@ class RecurrentDecoder(tf.keras.layers.Layer):
 
     def call(self, x_enc, enc_mask, x_dec, dec_mask, context, attention, training=False, **kwargs):
         with tf.name_scope("RecurrentDecoder"):
+            enc_mask = tf.expand_dims(enc_mask, axis=-1)
+            dec_mask = tf.expand_dims(dec_mask, axis=-1)
+
             initial_state = kwargs.get("initial_state")
-            x = self.drop(x_dec, training=training)
+            x = self.drop(x_dec * dec_mask, training=training)
             if initial_state is not None:
-                x = self.bi_lstm(x, initial_states=initial_state[0])
+                x = self.bi_lstm(x * dec_mask, initial_states=initial_state[0], training=training)
             else:
-                x = self.bi_lstm(x)
-            x = self.h_drop(self.projection(x, projection_vector=context))
-            x = self.dense(x)
+                x = self.bi_lstm(x * dec_mask, training=training)
+            x = self.h_drop(self.projection(x, projection_vector=context), training=training)
+            x = self.dense(x * dec_mask)
             return x

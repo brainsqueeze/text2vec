@@ -65,11 +65,11 @@ class BidirectionalLSTM(tf.keras.layers.Layer):
                 fwd_inputs, bwd_inputs = self.__make_inputs(inputs, initial_states=initial_states, layer=layer)
 
                 if self.return_states:
-                    decode_forward, *forward_state = forward(**fwd_inputs)
-                    decode_backward, *backward_state = backward(**bwd_inputs)
+                    decode_forward, *forward_state = forward(**fwd_inputs, training=training)
+                    decode_backward, *backward_state = backward(**bwd_inputs, training=training)
                 else:
-                    decode_forward = forward(**fwd_inputs)
-                    decode_backward = backward(**bwd_inputs)
+                    decode_forward = forward(**fwd_inputs, training=training)
+                    decode_backward = backward(**bwd_inputs, training=training)
                 inputs = self.concat([decode_forward, decode_backward])
                 layer += 1
             if self.return_states:
