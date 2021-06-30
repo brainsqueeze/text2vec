@@ -100,7 +100,7 @@ class TransformerAutoEncoder(tf.keras.Model):
                     encoding_tok = tf.ragged.map_flat_values(self.embed_layer.table.lookup, encoding_tok)
                 targets = self.embed_layer.slicer(encoding_tok)
 
-                decoding_tok, dec_mask, dec_time_steps = self.embed_layer(decoding_tok)
+                decoding_tok, dec_mask, _ = self.embed_layer(decoding_tok)
                 decoding_tok = self.decode_layer(
                     x_enc=x_enc,
                     enc_mask=enc_mask,
@@ -112,10 +112,8 @@ class TransformerAutoEncoder(tf.keras.Model):
                 )
                 decoding_tok = tf.tensordot(decoding_tok, self.embed_layer.embeddings, axes=[2, 1])
 
-            loss = loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
-                logits=decoding_tok[:, :dec_time_steps],
-                labels=targets.to_tensor(default_value=0)
-            )
+            loss = self.compiled_loss(y_pred=decoding_tok, y_true=targets.to_tensor(default_value=0))
+            loss = tf.reduce_sum(loss * dec_mask, axis=1)
             loss = tf.reduce_mean(loss)
 
         gradients = tape.gradient(loss, self.trainable_variables)
@@ -223,7 +221,7 @@ class LstmAutoEncoder(tf.keras.Model):
                     encoding_tok = tf.ragged.map_flat_values(self.embed_layer.table.lookup, encoding_tok)
                 targets = self.embed_layer.slicer(encoding_tok)
 
-                decoding_tok, dec_mask, dec_time_steps = self.embed_layer(decoding_tok)
+                decoding_tok, dec_mask, _ = self.embed_layer(decoding_tok)
                 decoding_tok = self.decode_layer(
                     x_enc=x_enc,
                     enc_mask=enc_mask,
@@ -236,10 +234,8 @@ class LstmAutoEncoder(tf.keras.Model):
                 )
                 decoding_tok = tf.tensordot(decoding_tok, self.embed_layer.embeddings, axes=[2, 1])
 
-            loss = loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
-                logits=decoding_tok[:, :dec_time_steps],
-                labels=targets.to_tensor(default_value=0)
-            )
+            loss = self.compiled_loss(y_pred=decoding_tok, y_true=targets.to_tensor(default_value=0))
+            loss = tf.reduce_sum(loss * dec_mask, axis=1)
             loss = tf.reduce_mean(loss)
 
         gradients = tape.gradient(loss, self.trainable_variables)
