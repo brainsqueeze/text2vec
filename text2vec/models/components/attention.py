@@ -1,12 +1,12 @@
 import tensorflow as tf
 
 
-class ScalarDotAttention(tf.keras.layers.Layer):
-    """Scalar dot attention layer which computes
+class ScaledDotAttention(tf.keras.layers.Layer):
+    """Scaled dot attention layer which computes
     ```
-    softmax(Query * permutedim(Key, (3, 1, 2)) / sqrt(T)) * permutedim(Value, (2, 1, 3))
+    softmax(Query * permutedim(Key, (3, 1, 2)) / sqrt(dk)) * permutedim(Value, (2, 1, 3))
     ```
-    where `T` is the number of time-steps.
+    where `dk` is the dimensionality of each sequence in the Key tensor.
 
     Future sequence-step masking can be performed, optionally, where the upper-triangular part of the softmax
     output tensor is set to 0 values.
@@ -17,13 +17,13 @@ class ScalarDotAttention(tf.keras.layers.Layer):
     --------
     ```python
     import tensorflow as tf
-    from text2vec.models.components.attention import ScalarDotAttention
+    from text2vec.models.components.attention import ScaledDotAttention
 
     Q = tf.random.uniform(shape=[4, 7, 12])
     K = tf.random.uniform(shape=[4, 7, 12])
     V = tf.random.uniform(shape=[4, 7, 12])
 
-    attention = ScalarDotAttention()
+    attention = ScaledDotAttention()
 
     # un-masked scalar dot attention
     attention(Q, K, V)
@@ -34,10 +34,10 @@ class ScalarDotAttention(tf.keras.layers.Layer):
     """
 
     def __init__(self):
-        super().__init__(name="ScalarDotAttention")
+        super().__init__(name="ScaledDotAttention")
 
     def call(self, query, key, value, mask_future=False):
-        with tf.name_scope("ScalarDotAttention"):
+        with tf.name_scope("ScaledDotAttention"):
             numerator = tf.einsum('ijk,ilk->ijl', query, key)
             denominator = tf.sqrt(tf.cast(tf.shape(key)[-1], tf.float32))
 
@@ -101,14 +101,16 @@ class BahdanauAttention(tf.keras.layers.Layer):
                 score = tf.math.tanh(tf.tensordot(encoded, self.W, axes=[-1, 0]) + self.B)
                 score = tf.reduce_sum(self.U * score, axis=-1)
                 alphas = tf.nn.softmax(score, name="attention-weights")
-                encoded = encoded * tf.expand_dims(alphas, axis=-1)
-                return encoded, tf.reduce_sum(encoded, axis=1, name="context-vector")
+                # encoded = encoded * tf.expand_dims(alphas, axis=-1)
+                # return encoded, tf.reduce_sum(encoded, axis=1, name="context-vector")
+                return tf.einsum('ilk,il->ik', encoded, alphas)
 
             score = tf.einsum("ijm,mn,ikn->ijk", encoded, self.W, decoded)
             alphas = tf.reduce_mean(score, axis=1)
             alphas = tf.nn.softmax(alphas)
-            decoded = decoded * tf.expand_dims(alphas, axis=-1)
-            return decoded, tf.reduce_sum(decoded, axis=1)
+            # decoded = decoded * tf.expand_dims(alphas, axis=-1)
+            # return decoded, tf.reduce_sum(decoded, axis=1)
+            return tf.einsum('ilk,il->ik', decoded, alphas)
 
 
 class SingleHeadAttention(tf.keras.layers.Layer):
@@ -159,7 +161,7 @@ class SingleHeadAttention(tf.keras.layers.Layer):
         self.WK = tf.Variable(initializer(shape=(dims, key_dims)), name="WK", dtype=tf.float32, trainable=True)
         self.WV = tf.Variable(initializer(shape=(dims, key_dims)), name="WV", dtype=tf.float32, trainable=True)
         self.dropout = tf.keras.layers.Dropout(1 - keep_prob)
-        self.dot_attention = ScalarDotAttention()
+        self.dot_attention = ScaledDotAttention()
 
     def call(self, inputs, mask_future=False, training=False):
         with tf.name_scope("SingleHeadAttention"):

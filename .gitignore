@@ -6,6 +6,8 @@
 *.ipynb
 **/*.dev.yml
 
+wiki_t2v/
+
 # JavaScript configs and dependencies
 **/.eslintrc.json
 **/package-lock.json

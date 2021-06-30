@@ -168,7 +168,7 @@ Text2vec includes a Python API with convenient classes for handling attention an
 
 #### Attention Components
 
-  - [text2vec.models.components.attention.ScalarDotAttention](/text2vec/models/components/attention.py#L4)
+  - [text2vec.models.components.attention.ScaledDotAttention](/text2vec/models/components/attention.py#L4)
   - [text2vec.models.components.attention.SingleHeadAttention](/text2vec/models/components/attention.py#L111)
   - [text2vec.models.MultiHeadAttention](/text2vec/models/components/attention.py#L175)
   - [text2vec.models.BahdanauAttention](/text2vec/models/components/attention.py#L53)
