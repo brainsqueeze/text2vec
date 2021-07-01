@@ -112,8 +112,11 @@ class TransformerAutoEncoder(tf.keras.Model):
                 )
                 decoding_tok = tf.tensordot(decoding_tok, self.embed_layer.embeddings, axes=[2, 1])
 
-            loss = self.compiled_loss(y_pred=decoding_tok, y_true=targets.to_tensor(default_value=0))
-            loss = tf.reduce_sum(loss * dec_mask, axis=1)
+            loss = loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
+                logits=decoding_tok,
+                labels=targets.to_tensor(default_value=0)
+            )
+            loss = loss * dec_mask
             loss = tf.reduce_mean(loss)
 
         gradients = tape.gradient(loss, self.trainable_variables)
@@ -234,8 +237,11 @@ class LstmAutoEncoder(tf.keras.Model):
                 )
                 decoding_tok = tf.tensordot(decoding_tok, self.embed_layer.embeddings, axes=[2, 1])
 
-            loss = self.compiled_loss(y_pred=decoding_tok, y_true=targets.to_tensor(default_value=0))
-            loss = tf.reduce_sum(loss * dec_mask, axis=1)
+            loss = loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
+                logits=decoding_tok,
+                labels=targets.to_tensor(default_value=0)
+            )
+            loss = loss * dec_mask
             loss = tf.reduce_mean(loss)
 
         gradients = tape.gradient(loss, self.trainable_variables)
