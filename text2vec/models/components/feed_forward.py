@@ -27,23 +27,16 @@ class PositionWiseFFN(tf.keras.layers.Layer):
 
     def __init__(self, emb_dims):
         super().__init__()
-        hidden_dim_size = 4 * emb_dims
 
-        self.ConvInner = tf.Variable(
-            tf.zeros([1, emb_dims, hidden_dim_size]),
-            name='conv-filter-inner',
-            dtype=tf.float32,
-            trainable=True
+        self.conv_inner = tf.keras.layers.Conv1D(
+            filters=4 * emb_dims,
+            kernel_size=1,
+            padding='same',
+            use_bias=False,
+            activation='relu'
         )
-        self.ConvOuter = tf.Variable(
-            tf.zeros([1, hidden_dim_size, emb_dims]),
-            name='conv-filter-outer',
-            dtype=tf.float32,
-            trainable=True
-        )
+        self.conv_outer = tf.keras.layers.Conv1D(filters=emb_dims, kernel_size=1, padding='same', use_bias=False)
 
     def call(self, x):
         with tf.name_scope("PositionWiseFFN"):
-            x = tf.nn.conv1d(x, filters=self.ConvInner, stride=1, padding='SAME')
-            x = tf.nn.relu(x)
-            return tf.nn.conv1d(x, filters=self.ConvOuter, stride=1, padding='SAME')
+            return self.conv_outer(self.conv_inner(x))
