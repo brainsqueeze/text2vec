@@ -1,7 +1,10 @@
+from typing import Dict, Union
 import tensorflow as tf
 
 from text2vec.models import TextInput
 from text2vec.models import Tokenizer
+from text2vec.models import TokenEmbed
+from text2vec.models import Embed
 from text2vec.models import TransformerEncoder
 from text2vec.models import TransformerDecoder
 from text2vec.models import RecurrentEncoder
@@ -98,7 +101,7 @@ class EncodingModel(tf.keras.Model):
                 eos = tf.fill([batch_size], value='</s>', name='eos-tag')
                 eos = tf.expand_dims(eos, axis=-1, name='eos-tag-expand')
 
-                targets = tf.concat([tokens, eos], axis=1, name='eos-concat')
+                targets = tf.concat([tokens, eos], 1, name='eos-concat')
                 targets = tf.ragged.map_flat_values(self.embed_layer.table.lookup, targets)
                 targets = self.embed_layer.slicer(targets)
 
@@ -106,7 +109,7 @@ class EncodingModel(tf.keras.Model):
                 bos = tf.fill([batch_size], value='<s>', name='bos-tag')
                 bos = tf.expand_dims(bos, axis=-1, name='bos-tag-expand')
 
-                dec_tokens = tf.concat([bos, tokens], axis=-1, name='bos-concat')
+                dec_tokens = tf.concat([bos, tokens], -1, name='bos-concat')
             x_dec, dec_mask, dec_time_steps = self.embed_layer(dec_tokens)
             x_out = self.decode_layer(
                 x_enc=x_enc,
@@ -166,28 +169,25 @@ class EncodingModel(tf.keras.Model):
 class ServingModel(tf.keras.Model):
     """Wrapper class for packaging final layers prior to saving.
 
-        Parameters
-        ----------
-        embed_layer : TextInput
-            Trained embedding layer.
-        encode_layer : (TransformerEncoder or RecurrentEncoder)
-            Trained encoding layer.
-        sep : str, optional
-            Token separator, by default ' '
-        """
+    Parameters
+    ----------
+    embed_layer : Union[TokenEmbed, Embed]
+        text2vec `TokenEmbed` or `Embed` layer
+    encode_layer : Union[TransformerEncoder, RecurrentEncoder]
+        text2vec `TransformerEncoder` or `RecurrentEncoder` layer
+    tokenizer : Tokenizer
+        text2vec `Tokenizer` layer
+    """
 
-    def __init__(self, embed_layer, encode_layer, sep=' '):
+    def __init__(self, embed_layer: Union[TokenEmbed, Embed],
+                 encode_layer: Union[TransformerEncoder, RecurrentEncoder], tokenizer: Tokenizer):
         super().__init__()
-
-        assert isinstance(embed_layer, TextInput)
-        assert type(encode_layer) in {RecurrentEncoder, TransformerEncoder}
-
         self.embed_layer = embed_layer
-        self.tokenizer = Tokenizer(sep)
+        self.tokenizer = tokenizer
         self.encode_layer = encode_layer
 
     @tf.function(input_signature=[tf.TensorSpec(shape=[None], dtype=tf.string)])
-    def embed(self, sentences):
+    def embed(self, sentences) -> Dict[str, tf.Tensor]:
         """Takes batches of free text and returns context vectors for each example.
 
         Parameters
@@ -197,16 +197,18 @@ class ServingModel(tf.keras.Model):
 
         Returns
         -------
-        tf.Tensor
-            Context vectors of shape (batch_size, embedding_size)
+        Dict[str, tf.Tensor]
+            Attention vector and hidden state sequences with shapes (batch_size, embedding_size)
+            and (batch_size, max_sequence_len, embedding_size) respectively.
         """
 
         tokens = self.tokenizer(sentences)  # turn sentences into ragged tensors of tokens
         x_enc, enc_mask, _ = self.embed_layer(tokens)
-        return self.encode_layer(x_enc, mask=enc_mask, training=False)
+        sequences, attention = self.encode_layer(x_enc, mask=enc_mask, training=False)
+        return {"sequences": sequences, "attention": attention}
 
     @tf.function(input_signature=[tf.TensorSpec(shape=[None], dtype=tf.string)])
-    def token_embed(self, sentences):
+    def token_embed(self, sentences) -> Dict[str, tf.Tensor]:
         """Takes batches of free text and returns word embeddings along with the associate token.
 
         Parameters
@@ -216,13 +218,16 @@ class ServingModel(tf.keras.Model):
 
         Returns
         -------
-        (tf.Tensor, tf.Tensor)
-            Tuple of (tokens, word_embeddings) with shapes (batch_size, max_sequence_len)
+        Dict[str, tf.Tensor]
+            Padded tokens and embedding vectors with shapes (batch_size, max_sequence_len)
             and (batch_size, max_sequence_len, embedding_size) respectively.
         """
 
         tokens = self.tokenizer(sentences)  # turn sentences into ragged tensors of tokens
-        return tokens.to_tensor(''), self.embed_layer(tokens, output_embeddings=True).to_tensor(0)
+        return {
+            "tokens": tokens.to_tensor('</>'),
+            "embeddings": self.embed_layer.get_embedding(tokens).to_tensor(0)
+        }
 
 
 def sequence_cost(target_sequences, sequence_logits, num_labels, smoothing=False):
@@ -264,7 +269,7 @@ def sequence_cost(target_sequences, sequence_logits, num_labels, smoothing=False
 
 def vector_cost(context_vectors):
     """Cost constraint on the cosine similarity of context vectors. Diagonal elements (self-context)
-    are coerced to be closer to 1 (self-consistency). Off-diagonal elements are pushed toward 0, 
+    are coerced to be closer to 1 (self-consistency). Off-diagonal elements are pushed toward 0,
     indicating not contextually similar.
 
     Parameters

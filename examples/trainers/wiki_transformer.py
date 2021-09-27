@@ -17,6 +17,7 @@ from tensorboard.plugins import projector
 
 from text2vec.autoencoders import TransformerAutoEncoder
 from text2vec.optimizer_tools import RampUpDecaySchedule
+from text2vec.training_tools import ServingModel
 
 os.environ["TOKENIZERS_PARALLELISM"] = "true"
 sent_tokenizer = PunktSentenceTokenizer().tokenize
@@ -41,7 +42,7 @@ def train_tokenizer() -> Tuple[tokenizers.Tokenizer, Generator, int]:
         special_tokens=[("[SEP]", 1), ("<s>", 2), ("</s>", 3)]
     )
 
-    dataset = datasets.load_dataset("wikitext", "wikitext-103-raw-v1", split="train")
+    dataset = datasets.load_dataset("wikitext", "wikitext-103-raw-v1", split="test")
 
     def batch_iterator(batch_size=1000):
         for i in range(0, len(dataset), batch_size):
@@ -71,7 +72,6 @@ def main(save_path: str):
         os.mkdir(save_path)
 
     tokenizer, data = train_tokenizer()
-    tokenizer.save(path=f"{save_path}/tokenizer.json")
     tokenizer.enable_truncation(2 * 512 + 1)  # encoding + decoding + [SEP] token
 
     with open(f"{save_path}/metadata.tsv", "w") as tsv:
@@ -132,7 +132,18 @@ def main(save_path: str):
         epochs=1
     )
 
-    tf.keras.models.save_model(model, filepath=f"{save_path}/saved_model", include_optimizer=False, save_format="tf")
+    # tf.keras.models.save_model(model, filepath=f"{save_path}/saved_model", include_optimizer=False, save_format="tf")
+    serve_model = ServingModel(
+        tokenizer=model.tokenizer,
+        embed_layer=model.embed_layer,
+        encode_layer=model.encode_layer
+    )
+    tf.saved_model.save(
+        obj=serve_model,
+        export_dir=f"{save_path}/saved_model",
+        signatures={"serving_default": serve_model.embed, "token_embed": serve_model.token_embed}
+    )
+    tokenizer.save(path=f"{save_path}/tokenizer.json")
     return model
 
 
