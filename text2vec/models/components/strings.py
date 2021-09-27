@@ -102,17 +102,14 @@ class SubTokenFinderMask(tf.keras.layers.Layer):
         return tf.ragged.map_flat_values(lambda x: self.find_token_sequence(text_tokens, x), token_sequence_set)
 
     def call(self, text: tf.Tensor, substrings: tf.RaggedTensor, token_level_out: bool = True) -> tf.RaggedTensor:
-        combined = tf.concat([
-            tf.expand_dims(self.tokenizer(text), axis=1),
-            self.tokenizer(substrings)
-        ], axis=1)
+        combined = tf.concat([tf.expand_dims(self.tokenizer(text), axis=1), self.tokenizer(substrings)], 1)
 
         token_found = tf.map_fn(
             lambda x: self.find_token_sequence_set(x[0], x[1:]),
             combined,
             fn_output_signature=tf.RaggedTensorSpec(ragged_rank=1, dtype=tf.bool)
         )
-        
+
         if token_level_out:
             return token_found
         return self.reducer(token_found, axis=-1)

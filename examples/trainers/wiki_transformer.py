@@ -109,6 +109,7 @@ def main(save_path: str):
 
     # add word labels to the projector
     config = projector.ProjectorConfig()
+    # pylint: disable=no-member
     embeddings_config = config.embeddings.add()
 
     checkpoint_manager.save()

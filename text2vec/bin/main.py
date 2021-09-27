@@ -138,6 +138,7 @@ def train(model_folder, num_tokens=10000, embedding_size=256, num_hidden=128, ma
 
     # add word labels to the projector
     config = projector.ProjectorConfig()
+    # pylint: disable=no-member
     embeddings_config = config.embeddings.add()
 
     checkpoint_manager.save()
