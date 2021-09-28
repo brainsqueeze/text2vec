@@ -37,6 +37,7 @@ class SubStringFinderMask(tf.keras.layers.Layer):
         self.tokenizer = Tokenizer(sep)
         self.match = tf.keras.layers.Lambda(lambda x: tf.strings.regex_full_match(input=x[0], pattern=x[1]))
 
+        # this is designed to approximate the functionality in re.escape
         self.special_chars = r'[\(\)\[\]\{\}\?\*\+\-\|\^\$\\\\\.\&\~\#\\\t\\\n\\\r\\\v\\\f]'
 
     def find_match(self, texts: tf.Tensor, substrings: tf.Tensor) -> tf.Tensor:
