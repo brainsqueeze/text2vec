@@ -37,12 +37,35 @@ class SubStringFinderMask(tf.keras.layers.Layer):
         self.tokenizer = Tokenizer(sep)
         self.match = tf.keras.layers.Lambda(lambda x: tf.strings.regex_full_match(input=x[0], pattern=x[1]))
 
-    def find_match(self, texts, substrings):
+        self.special_chars = r'[\(\)\[\]\{\}\?\*\+\-\|\^\$\\\\\.\&\~\#\\\t\\\n\\\r\\\v\\\f]'
+
+    def find_match(self, texts: tf.Tensor, substrings: tf.Tensor) -> tf.Tensor:
+        """Vectorized regex matching with row-aligned texts and substrings.
+
+        Parameters
+        ----------
+        texts : tf.Tensor
+            Tensor of strings to search on
+        substrings : tf.Tensor
+            Tensor of substrings to search for, must be aligned row-wise with the texts
+
+        Returns
+        -------
+        tf.Tensor
+            Boolean tensor with the same shape as `texts` and `substrings`
+        """
+
         return tf.map_fn(self.match, tf.stack([texts, substrings], axis=1), fn_output_signature=tf.bool)
 
     def call(self, texts: tf.Tensor, substrings: tf.RaggedTensor) -> tf.RaggedTensor:
-        pre = '.*(\s|^)'
-        post = '(\s|$).*'
+        texts = tf.strings.regex_replace(texts, pattern=self.special_chars, rewrite='')
+        texts = tf.strings.strip(tf.strings.regex_replace(texts, pattern=r'\s{2,}', rewrite=' '))
+
+        substrings = tf.strings.regex_replace(substrings, pattern=self.special_chars, rewrite='')
+        substrings = tf.strings.strip(tf.strings.regex_replace(substrings, pattern=r'\s{2,}', rewrite=' '))
+
+        pre = r'.*(\s|^)'
+        post = r'(\s|$).*'
 
         ragged_texts = tf.RaggedTensor.from_row_lengths(
             values=tf.repeat(texts, repeats=substrings.row_lengths()),
