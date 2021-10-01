@@ -15,7 +15,7 @@ import numpy as np
 import tensorflow as tf
 from tensorboard.plugins import projector
 
-from text2vec.autoencoders import TransformerAutoEncoder
+from text2vec.autoencoders import LstmAutoEncoder
 from text2vec.optimizer_tools import RampUpDecaySchedule
 
 os.environ["TOKENIZERS_PARALLELISM"] = "true"
@@ -95,7 +95,7 @@ def main(save_path: str):
 
         return tf.py_function(token_mapper, inp=[x], Tout=[tf.string, tf.string])
 
-    model = TransformerAutoEncoder(
+    model = LstmAutoEncoder(
         max_sequence_len=512,
         embedding_size=128,
         token_hash=tokenizer.get_vocab(),

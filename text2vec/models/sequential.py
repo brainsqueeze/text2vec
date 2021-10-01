@@ -52,7 +52,7 @@ class RecurrentEncoder(tf.keras.layers.Layer):
             mask = tf.expand_dims(mask, axis=-1)
             x = self.drop(x, training=training)
             x, states = self.bi_lstm(x * mask, training=training)
-            x, context = self.attention(x * mask)
+            context = self.attention(x * mask)
 
             if training:
                 return x, context, states
@@ -91,7 +91,7 @@ class RecurrentDecoder(tf.keras.layers.Layer):
         self.bi_lstm = BidirectionalLSTM(num_layers=num_layers, num_hidden=num_hidden, return_states=False)
         self.dense = tf.keras.layers.Dense(units=dims, activation=tf.nn.relu)
 
-    def call(self, x_enc, enc_mask, x_dec, dec_mask, context, attention, training=False, **kwargs):
+    def call(self, x_enc, enc_mask, x_dec, dec_mask, context, training=False, **kwargs):
         with tf.name_scope("RecurrentDecoder"):
             enc_mask = tf.expand_dims(enc_mask, axis=-1)
             dec_mask = tf.expand_dims(dec_mask, axis=-1)

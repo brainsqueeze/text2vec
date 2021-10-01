@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="text2vec",
-    version="1.3.1",
+    version="1.4.0",
     description="Building blocks for text vectorization and embedding",
     author="Dave Hollander",
     author_url="https://github.com/brainsqueeze",
