@@ -1,4 +1,3 @@
-import tensorflow as tf
 from tensorflow.keras import layers
 
 from .components.attention import BahdanauAttention
@@ -16,7 +15,7 @@ class TransformerEncoder(layers.Layer):
     ----------
     max_sequence_len : int
         Longest sequence seen at training time.
-    layers : int, optional
+    num_layers : int, optional
         Number of layers in the multi-head-attention layer, by default 8
     n_stacks : int, optional
         Number of encoding blocks to chain, by default 1
@@ -47,7 +46,7 @@ class TransformerEncoder(layers.Layer):
     ```
     """
 
-    def __init__(self, max_sequence_len, layers=8, n_stacks=1, embedding_size=50,
+    def __init__(self, max_sequence_len, num_layers=8, n_stacks=1, embedding_size=50,
                  input_keep_prob=1.0, hidden_keep_prob=1.0):
         super().__init__()
         dims = embedding_size
@@ -58,7 +57,7 @@ class TransformerEncoder(layers.Layer):
         self.layer_norm = LayerNorm()
 
         self.positional_encode = PositionalEncoder(emb_dims=dims, max_sequence_len=max_sequence_len)
-        self.MHA = [MultiHeadAttention(emb_dims=dims, layers=layers, keep_prob=keep_prob) for _ in range(n_stacks)]
+        self.MHA = [MultiHeadAttention(emb_dims=dims, layers=num_layers, keep_prob=keep_prob) for _ in range(n_stacks)]
         self.FFN = [PositionWiseFFN(emb_dims=dims) for _ in range(n_stacks)]
         self.attention = BahdanauAttention(size=dims)
 
@@ -83,7 +82,7 @@ class TransformerDecoder(layers.Layer):
     ----------
     max_sequence_len : int
         Longest sequence seen at training time.
-    layers : int, optional
+    num_layers : int, optional
         Number of layers in the multi-head-attention layer, by default 8
     n_stacks : int, optional
         Number of encoding blocks to chain, by default 1
@@ -95,7 +94,7 @@ class TransformerDecoder(layers.Layer):
         Value between 0 and 1.0 which determines `1 - dropout_rate`, by default 1.0.
     """
 
-    def __init__(self, max_sequence_len, layers=8, n_stacks=1, embedding_size=50,
+    def __init__(self, max_sequence_len, num_layers=8, n_stacks=1, embedding_size=50,
                  input_keep_prob=1.0, hidden_keep_prob=1.0):
         super().__init__()
         dims = embedding_size
@@ -107,7 +106,7 @@ class TransformerDecoder(layers.Layer):
         self.projection = TensorProjection()
 
         self.positional_encode = PositionalEncoder(emb_dims=dims, max_sequence_len=max_sequence_len)
-        self.MHA = [MultiHeadAttention(emb_dims=dims, layers=layers, keep_prob=keep_prob) for _ in range(n_stacks)]
+        self.MHA = [MultiHeadAttention(emb_dims=dims, layers=num_layers, keep_prob=keep_prob) for _ in range(n_stacks)]
         self.FFN = [PositionWiseFFN(emb_dims=dims) for _ in range(n_stacks)]
 
     def call(self, x_enc, enc_mask, x_dec, dec_mask, context, attention, training=False, **kwargs):

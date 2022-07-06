@@ -1,7 +1,8 @@
 # pylint: disable=too-many-ancestors
-from typing import Dict
+from typing import Dict, Optional
 
 import tensorflow as tf
+from tensorflow.keras import layers, Model
 
 from text2vec.models.components.feeder import Tokenizer
 from text2vec.models.components.text_inputs import TokenEmbed
@@ -12,7 +13,7 @@ from text2vec.models.sequential import RecurrentEncoder
 from text2vec.models.sequential import RecurrentDecoder
 
 
-class TransformerAutoEncoder(tf.keras.Model):
+class TransformerAutoEncoder(Model):
     """Wrapper model class to combine the transformer based encoder-decoder training pipeline.
 
     Parameters
@@ -27,7 +28,7 @@ class TransformerAutoEncoder(tf.keras.Model):
         Size of the vocabulary. Set this if pre-computing token IDs to pass to the model, by default None
     unknown_token : str, optional
         The placeholder value for OOV terms, by default '<unk>'
-    sep : int, optional
+    sep : str, optional
         Token separator by default ' '
     input_keep_prob : float, optional
         Value between 0 and 1.0 which determines `1 - dropout_rate`, by default 1.0
@@ -54,7 +55,8 @@ class TransformerAutoEncoder(tf.keras.Model):
     """
 
     def __init__(self, max_sequence_len: int, embedding_size: int,
-                 token_hash: dict = None, vocab_size: int = None, unknown_token: str = '<unk>', sep: int = ' ',
+                 token_hash: Optional[dict] = None, vocab_size: Optional[int] = None,
+                 unknown_token: str = '<unk>', sep: str = ' ',
                  input_keep_prob: float = 1.0, hidden_keep_prob: float = 1.0):
         super().__init__()
 
@@ -77,23 +79,23 @@ class TransformerAutoEncoder(tf.keras.Model):
                 unknown_token=unknown_token
             )
         else:
-            self.tokenizer = tf.keras.layers.Lambda(lambda x: x)  # this is only for consistency, identity map
+            self.tokenizer = layers.Lambda(lambda x: x)  # this is only for consistency, identity map
             self.embed_layer = Embed(
                 vocab_size=vocab_size,
                 embedding_size=embedding_size,
                 max_sequence_len=max_sequence_len
             )
 
-        self.encode_layer = TransformerEncoder(n_stacks=1, layers=8, **params)
-        self.decode_layer = TransformerDecoder(n_stacks=1, layers=8, **params)
+        self.encode_layer = TransformerEncoder(n_stacks=1, num_layers=8, **params)
+        self.decode_layer = TransformerDecoder(n_stacks=1, num_layers=8, **params)
 
-    def call(self, tokens, **kwargs):
+    def call(self, tokens, training: bool = False):  # pylint: disable=missing-function-docstring
         tokens = self.tokenizer(tokens)
-        x_enc, enc_mask, _ = self.embed_layer(tokens, **kwargs)
-        x_enc, context = self.encode_layer(x_enc, mask=enc_mask, training=kwargs.get("training", False))
+        x_enc, enc_mask, _ = self.embed_layer(tokens, training=training)
+        x_enc, context = self.encode_layer(x_enc, mask=enc_mask, training=training)
         return x_enc, context, enc_mask
 
-    def train_step(self, data):
+    def train_step(self, data):  # pylint: disable=missing-function-docstring
         encoding_tok, decoding_tok = data
         decoding_tok = self.tokenizer(decoding_tok)
 
@@ -134,7 +136,7 @@ class TransformerAutoEncoder(tf.keras.Model):
             return {"loss": loss, 'learning_rate': self.optimizer.learning_rate(self.optimizer.iterations)}
         return {"loss": loss, 'learning_rate': self.optimizer.learning_rate}
 
-    def test_step(self, data):
+    def test_step(self, data):  # pylint: disable=missing-function-docstring
         encoding_tok, decoding_tok = data
         decoding_tok = self.tokenizer(decoding_tok)
 
@@ -208,7 +210,7 @@ class TransformerAutoEncoder(tf.keras.Model):
         }
 
 
-class LstmAutoEncoder(tf.keras.Model):
+class LstmAutoEncoder(Model):
     """Wrapper model class to combine the LSTM based encoder-decoder training pipeline.
 
     Parameters
@@ -225,7 +227,7 @@ class LstmAutoEncoder(tf.keras.Model):
         Size of the vocabulary. Set this if pre-computing token IDs to pass to the model, by default None
     unknown_token : str, optional
         The placeholder value for OOV terms, by default '<unk>'
-    sep : int, optional
+    sep : str, optional
         Token separator by default ' '
     input_keep_prob : float, optional
         Value between 0 and 1.0 which determines `1 - dropout_rate`, by default 1.0
@@ -252,7 +254,8 @@ class LstmAutoEncoder(tf.keras.Model):
     """
 
     def __init__(self, max_sequence_len: int, embedding_size: int, num_hidden: int = 64,
-                 token_hash: dict = None, vocab_size: int = None, unknown_token: str = '<unk>', sep: int = ' ',
+                 token_hash: Optional[dict] = None, vocab_size: Optional[int] = None,
+                 unknown_token: str = '<unk>', sep: str = ' ',
                  input_keep_prob: float = 1.0, hidden_keep_prob: float = 1.0):
         super().__init__()
 
@@ -275,7 +278,7 @@ class LstmAutoEncoder(tf.keras.Model):
                 unknown_token=unknown_token
             )
         else:
-            self.tokenizer = tf.keras.layers.Lambda(lambda x: x)  # this is only for consistency, identity map
+            self.tokenizer = layers.Lambda(lambda x: x)  # this is only for consistency, identity map
             self.embed_layer = Embed(
                 vocab_size=vocab_size,
                 embedding_size=embedding_size,
@@ -285,13 +288,13 @@ class LstmAutoEncoder(tf.keras.Model):
         self.encode_layer = RecurrentEncoder(num_hidden=num_hidden, **params)
         self.decode_layer = RecurrentDecoder(num_hidden=num_hidden, **params)
 
-    def call(self, tokens, **kwargs):
+    def call(self, tokens, training: bool = False):  # pylint: disable=missing-function-docstring
         tokens = self.tokenizer(tokens)
-        x_enc, enc_mask, _ = self.embed_layer(tokens, **kwargs)
-        x_enc, context, *states = self.encode_layer(x_enc, mask=enc_mask, training=kwargs.get("training", False))
+        x_enc, enc_mask, _ = self.embed_layer(tokens, training=training)
+        x_enc, context, *states = self.encode_layer(x_enc, mask=enc_mask, training=training)
         return x_enc, context, enc_mask, states
 
-    def train_step(self, data):
+    def train_step(self, data):  # pylint: disable=missing-function-docstring
         encoding_tok, decoding_tok = data
         decoding_tok = self.tokenizer(decoding_tok)
 
@@ -332,7 +335,7 @@ class LstmAutoEncoder(tf.keras.Model):
             return {"loss": loss, 'learning_rate': self.optimizer.learning_rate(self.optimizer.iterations)}
         return {"loss": loss, 'learning_rate': self.optimizer.learning_rate}
 
-    def test_step(self, data):
+    def test_step(self, data):  # pylint: disable=missing-function-docstring
         encoding_tok, decoding_tok = data
         decoding_tok = self.tokenizer(decoding_tok)
 
@@ -383,7 +386,7 @@ class LstmAutoEncoder(tf.keras.Model):
             and (batch_size, max_sequence_len, embedding_size) respectively.
         """
 
-        sequences, attention, *args = self(sentences, training=False)
+        sequences, attention, *_ = self(sentences, training=False)
         return {"sequences": sequences, "attention": attention}
 
     @tf.function(input_signature=[tf.TensorSpec(shape=[None], dtype=tf.string)])
