@@ -17,8 +17,8 @@ class RecurrentEncoder(layers.Layer):
         Dimensionality of hidden LSTM layer weights.
     num_layers : int, optional
         Number of hidden LSTM layers, by default 2
-    input_keep_prob : float, optional
-        Value between 0 and 1.0 which determines `1 - dropout_rate`, by default 1.0.
+    input_drop_rate : float, optional
+        Value between 0 and 1.0, by default 0.
 
     Examples
     --------
@@ -40,15 +40,16 @@ class RecurrentEncoder(layers.Layer):
     ```
     """
 
-    def __init__(self, max_sequence_len, num_hidden, num_layers=2, input_keep_prob=1.0, **kwargs):
+    def __init__(self, max_sequence_len, num_hidden, num_layers=2, input_drop_rate: float = 0., **kwargs):
         super().__init__()
         self.max_sequence_length = max_sequence_len
 
-        self.drop = layers.Dropout(1 - input_keep_prob, name="InputDropout")
+        self.drop = layers.Dropout(input_drop_rate)
         self.bi_lstm = BidirectionalLSTM(num_layers=num_layers, num_hidden=num_hidden, return_states=True)
         self.attention = BahdanauAttention(size=2 * num_hidden)
 
-    def call(self, x, mask, training=False, **kwargs):
+    # pylint: disable=missing-function-docstring
+    def call(self, x, mask, training: bool = False):
         with tf.name_scope("RecurrentEncoder"):
             mask = tf.expand_dims(mask, axis=-1)
             x = self.drop(x, training=training)
@@ -73,26 +74,27 @@ class RecurrentDecoder(layers.Layer):
         Dimensionality of the word-embeddings, by default 50.
     num_layers : int, optional
         Number of hidden LSTM layers, by default 2
-    input_keep_prob : float, optional
-        Value between 0 and 1.0 which determines `1 - dropout_rate`, by default 1.0.
-    hidden_keep_prob : float, optional
-        Hidden states dropout. Value between 0 and 1.0 which determines `1 - dropout_rate`, by default 1.0.
+    input_drop_rate : float, optional
+        Value between 0 and 1.0, by default 0.
+    hidden_drop_rate : float, optional
+        Value between 0 and 1.0, by default 0.
     """
 
     def __init__(self, max_sequence_len, num_hidden, embedding_size=50, num_layers=2,
-                 input_keep_prob=1.0, hidden_keep_prob=1.0):
+                 input_drop_rate: float = 0., hidden_drop_rate: float = 0.):
         super().__init__()
         self.max_sequence_length = max_sequence_len
         dims = embedding_size
 
-        self.drop = layers.Dropout(1 - input_keep_prob, name="InputDropout")
-        self.h_drop = layers.Dropout(1 - hidden_keep_prob, name="HiddenStateDropout")
+        self.drop = layers.Dropout(input_drop_rate)
+        self.h_drop = layers.Dropout(hidden_drop_rate)
         self.projection = TensorProjection()
 
         self.bi_lstm = BidirectionalLSTM(num_layers=num_layers, num_hidden=num_hidden, return_states=False)
         self.dense = layers.Dense(units=dims, activation=tf.nn.relu)
 
-    def call(self, x_enc, enc_mask, x_dec, dec_mask, context, training=False, **kwargs):
+    # pylint: disable=missing-function-docstring
+    def call(self, x_enc, enc_mask, x_dec, dec_mask, context, training: bool = False):
         enc_mask = tf.expand_dims(enc_mask, axis=-1)
         dec_mask = tf.expand_dims(dec_mask, axis=-1)
 

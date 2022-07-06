@@ -99,8 +99,8 @@ def main(save_path: str):
         max_sequence_len=512,
         embedding_size=128,
         token_hash=tokenizer.get_vocab(),
-        input_keep_prob=0.7,
-        hidden_keep_prob=0.5
+        input_drop_rate=0.3,
+        hidden_drop_rate=0.5
     )
     model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=RampUpDecaySchedule(embedding_size=128)))
     checkpoint = tf.train.Checkpoint(Classifier=model, optimizer=model.optimizer)

@@ -38,19 +38,20 @@ class ScaledDotAttention(layers.Layer):
 
     def __init__(self):
         super().__init__(name="ScaledDotAttention")
+        self.scale = tf.constant(1e9, dtype=tf.float32)
 
-    def call(self, query, key, value, mask_future=False):
-        with tf.name_scope("ScaledDotAttention"):
-            numerator = tf.einsum('ijk,ilk->ijl', query, key)
-            denominator = tf.sqrt(tf.cast(tf.shape(key)[-1], tf.float32))
+    # pylint: disable=missing-function-docstring
+    def call(self, query, key, value, mask_future: bool = False):
+        numerator = tf.einsum('ijk,ilk->ijl', query, key)
+        denominator = tf.sqrt(tf.cast(tf.shape(key)[-1], tf.float32))
 
-            if mask_future:
-                upper = (1 + 1e9) * tf.linalg.band_part(tf.ones_like(numerator), num_lower=0, num_upper=-1)
-                mask = 1 - upper
-                numerator *= mask
+        if mask_future:
+            upper = (1 + self.scale) * tf.linalg.band_part(tf.ones_like(numerator), num_lower=0, num_upper=-1)
+            mask = 1 - upper
+            numerator *= mask
 
-            x = tf.nn.softmax(numerator / denominator)
-            return tf.einsum('ijk,ikl->ijl', x, value)
+        x = tf.nn.softmax(numerator / denominator)
+        return tf.einsum('ijk,ikl->ijl', x, value)
 
 
 class BahdanauAttention(layers.Layer):
@@ -65,6 +66,8 @@ class BahdanauAttention(layers.Layer):
     ----------
     size : int
         The dimensionality of the hidden attention weights. This is the same as the word-embedding dimensionality.
+    drop_rate : float, optional
+        Value between 0 and 1.0, performs dropout on the attention weights, by default 0.
 
     Examples
     --------
@@ -85,13 +88,14 @@ class BahdanauAttention(layers.Layer):
     ```
     """
 
-    def __init__(self, size: int, dropout_rate: float = 0.):
+    def __init__(self, size: int, drop_rate: float = 0.):
         super().__init__(name="BahdanauAttention")
 
         self.hidden = layers.Dense(units=size, activation="tanh")
         self.U = tf.Variable(initializers.GlorotUniform()(shape=[size]), name="U", dtype=tf.float32, trainable=True)
-        self.dropout = layers.Dropout(dropout_rate)
+        self.dropout = layers.Dropout(drop_rate)
 
+    # pylint: disable=missing-function-docstring
     def call(self, encoded: tf.Tensor, decoded: Optional[tf.Tensor] = None, training: bool = False) -> tf.Tensor:
         if decoded is None:
             score = tf.math.reduce_sum(self.U * self.hidden(encoded), axis=-1)
@@ -103,6 +107,7 @@ class BahdanauAttention(layers.Layer):
 
         score = tf.einsum("ijm,mn,ikn->ijk", encoded, self.hidden.kernel, decoded)
         alphas = tf.nn.softmax(score, axis=1)
+        alphas = self.dropout(alphas, training=training)
         alphas = tf.math.reduce_sum(tf.matmul(alphas, encoded, transpose_a=True), axis=-1)
         return tf.einsum('ilk,il->ik', decoded, alphas)
 
@@ -120,10 +125,10 @@ class SingleHeadAttention(layers.Layer):
     ----------
     emb_dims : int
         The word-embedding dimensionality. This value determines the dimensionalities of the hidden weights.
-    layers : int, optional
+    num_layers : int, optional
         The number of parallel single-head-attention mechanisms, by default 8.
-    keep_prob : float, optional
-        Value between 0 and 1.0 which determines `1 - dropout_rate`, by default 1.0.
+    drop_rate : float, optional
+        Value between 0 and 1.0, by default 0.
 
     Examples
     --------
@@ -143,32 +148,32 @@ class SingleHeadAttention(layers.Layer):
     ```
     """
 
-    def __init__(self, emb_dims, layers=8, keep_prob=1.0):
+    def __init__(self, emb_dims, num_layers: int = 8, drop_rate: float = 0.):
         super().__init__(name="SingleHeadAttention")
-        assert isinstance(layers, int) and layers > 0
+        assert isinstance(num_layers, int) and num_layers > 0
 
         dims = emb_dims
-        key_dims = emb_dims // layers
+        key_dims = emb_dims // num_layers
         initializer = tf.keras.initializers.GlorotUniform()
 
         self.WQ = tf.Variable(initializer(shape=(dims, key_dims)), name="WQ", dtype=tf.float32, trainable=True)
         self.WK = tf.Variable(initializer(shape=(dims, key_dims)), name="WK", dtype=tf.float32, trainable=True)
         self.WV = tf.Variable(initializer(shape=(dims, key_dims)), name="WV", dtype=tf.float32, trainable=True)
-        self.dropout = layers.Dropout(1 - keep_prob)
+        self.dropout = layers.Dropout(drop_rate)
         self.dot_attention = ScaledDotAttention()
 
+    # pylint: disable=missing-function-docstring
     def call(self, inputs, mask_future: bool = False, training: bool = False):
-        with tf.name_scope("SingleHeadAttention"):
-            queries, keys, values = inputs
+        queries, keys, values = inputs
 
-            queries = self.dropout(queries, training=training)
-            keys = self.dropout(keys, training=training)
-            values = self.dropout(values, training=training)
+        queries = self.dropout(queries, training=training)
+        keys = self.dropout(keys, training=training)
+        values = self.dropout(values, training=training)
 
-            head_queries = tf.tensordot(queries, self.WQ, axes=[-1, 0])
-            head_keys = tf.tensordot(keys, self.WK, axes=[-1, 0])
-            head_values = tf.tensordot(values, self.WV, axes=[-1, 0])
-            return self.dot_attention(query=head_queries, key=head_keys, value=head_values, mask_future=mask_future)
+        head_queries = tf.tensordot(queries, self.WQ, axes=[-1, 0])
+        head_keys = tf.tensordot(keys, self.WK, axes=[-1, 0])
+        head_values = tf.tensordot(values, self.WV, axes=[-1, 0])
+        return self.dot_attention(query=head_queries, key=head_keys, value=head_values, mask_future=mask_future)
 
 
 class MultiHeadAttention(layers.Layer):
@@ -184,10 +189,10 @@ class MultiHeadAttention(layers.Layer):
     ----------
     emb_dims : int
         The word-embedding dimensionality. This value determines the dimensionalities of the hidden weights.
-    layers : int, optional
+    num_layers : int, optional
         The number of parallel single-head-attention mechanisms, by default 8.
-    keep_prob : float, optional
-        Value between 0 and 1.0 which determines `1 - dropout_rate`, by default 1.0.
+    drop_rate : float, optional
+        Value between 0 and 1.0, by default 0.
 
     Examples
     --------
@@ -207,17 +212,16 @@ class MultiHeadAttention(layers.Layer):
     ```
     """
 
-    def __init__(self, emb_dims: int, layers: int = 8, keep_prob: float = 1.0):
+    def __init__(self, emb_dims: int, num_layers: int = 8, drop_rate: float = 0.):
         super().__init__(name="MultiHeadAttention")
-        self.layer_heads = []
-        for i in range(layers):
-            with tf.name_scope(f"head-{i}"):
-                self.layer_heads.append(SingleHeadAttention(emb_dims=emb_dims, layers=layers, keep_prob=keep_prob))
+        self.layer_heads = [
+            SingleHeadAttention(emb_dims=emb_dims, num_layers=num_layers, drop_rate=drop_rate)
+            for _ in range(num_layers)
+        ]
+        self.dense = layers.Dense(units=emb_dims, use_bias=False)
 
-        self.dense =layers.Dense(units=emb_dims, use_bias=False)
-
+    # pylint: disable=missing-function-docstring
     def call(self, inputs, mask_future=False, training=False):
-        with tf.name_scope("MultiHeadAttention"):
-            heads = [layer(inputs, mask_future=mask_future, training=training) for layer in self.layer_heads]
-            total_head = tf.concat(heads, -1)
-            return self.dense(total_head)
+        heads = [layer(inputs, mask_future=mask_future, training=training) for layer in self.layer_heads]
+        total_head = tf.concat(heads, -1)
+        return self.dense(total_head)

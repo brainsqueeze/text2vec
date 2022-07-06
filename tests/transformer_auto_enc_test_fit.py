@@ -92,8 +92,8 @@ def main():
         max_sequence_len=512,
         embedding_size=128,
         token_hash=tokenizer.get_vocab(),
-        input_keep_prob=0.7,
-        hidden_keep_prob=0.5
+        input_drop_rate=0.3,
+        hidden_drop_rate=0.5
     )
     model.compile(optimizer=tf.keras.optimizers.Adam(), run_eagerly=True)
     model.fit(x=data.prefetch(10).batch(16), epochs=1)

@@ -21,10 +21,10 @@ class TransformerEncoder(layers.Layer):
         Number of encoding blocks to chain, by default 1
     embedding_size : int, optional
         Dimensionality of the word-embeddings, by default 50.
-    input_keep_prob : float, optional
-        Value between 0 and 1.0 which determines `1 - dropout_rate`, by default 1.0.
-    hidden_keep_prob : float, optional
-        Value between 0 and 1.0 which determines `1 - dropout_rate`, by default 1.0.
+    input_drop_rate : float, optional
+        Value between 0 and 1.0, by default 0.
+    hidden_drop_rate : float, optional
+        Value between 0 and 1.0, by default 0.
 
     Examples
     --------
@@ -47,21 +47,24 @@ class TransformerEncoder(layers.Layer):
     """
 
     def __init__(self, max_sequence_len, num_layers=8, n_stacks=1, embedding_size=50,
-                 input_keep_prob=1.0, hidden_keep_prob=1.0):
+                 input_drop_rate: float = 0., hidden_drop_rate: float = 0.):
         super().__init__()
         dims = embedding_size
-        keep_prob = hidden_keep_prob
 
-        self.drop = layers.Dropout(1 - input_keep_prob, name="InputDropout")
-        self.h_drop = layers.Dropout(1 - hidden_keep_prob, name="HiddenStateDropout")
+        self.drop = layers.Dropout(input_drop_rate)
+        self.h_drop = layers.Dropout(hidden_drop_rate)
         self.layer_norm = LayerNorm()
 
         self.positional_encode = PositionalEncoder(emb_dims=dims, max_sequence_len=max_sequence_len)
-        self.MHA = [MultiHeadAttention(emb_dims=dims, layers=num_layers, keep_prob=keep_prob) for _ in range(n_stacks)]
+        self.MHA = [
+            MultiHeadAttention(emb_dims=dims, num_layers=num_layers, drop_rate=input_drop_rate)
+            for _ in range(n_stacks)
+        ]
         self.FFN = [PositionWiseFFN(emb_dims=dims) for _ in range(n_stacks)]
         self.attention = BahdanauAttention(size=dims)
 
-    def call(self, x, mask, training=False):
+    # pylint: disable=missing-function-docstring
+    def call(self, x, mask, training: bool = False):
         x = self.positional_encode(x, mask)
         x = self.drop(x, training=training)
 
@@ -71,7 +74,7 @@ class TransformerEncoder(layers.Layer):
             x = self.h_drop(ffn(x), training=training) + x
             x = self.layer_norm(x)
 
-        context = self.attention(x)
+        x, context = self.attention(x)
         return x, context
 
 
@@ -88,28 +91,31 @@ class TransformerDecoder(layers.Layer):
         Number of encoding blocks to chain, by default 1
     embedding_size : int, optional
         Dimensionality of the word-embeddings, by default 50.
-    input_keep_prob : float, optional
-        Value between 0 and 1.0 which determines `1 - dropout_rate`, by default 1.0.
-    hidden_keep_prob : float, optional
-        Value between 0 and 1.0 which determines `1 - dropout_rate`, by default 1.0.
+    input_drop_rate : float, optional
+        Value between 0 and 1.0, by default 0.
+    hidden_drop_rate : float, optional
+        Value between 0 and 1.0, by default 0.
     """
 
     def __init__(self, max_sequence_len, num_layers=8, n_stacks=1, embedding_size=50,
-                 input_keep_prob=1.0, hidden_keep_prob=1.0):
+                 input_drop_rate: float = 0., hidden_drop_rate: float = 0.):
         super().__init__()
         dims = embedding_size
-        keep_prob = hidden_keep_prob
 
-        self.drop = layers.Dropout(1 - input_keep_prob, name="InputDropout")
-        self.h_drop = layers.Dropout(1 - hidden_keep_prob, name="HiddenStateDropout")
+        self.drop = layers.Dropout(input_drop_rate)
+        self.h_drop = layers.Dropout(hidden_drop_rate)
         self.layer_norm = LayerNorm()
         self.projection = TensorProjection()
 
         self.positional_encode = PositionalEncoder(emb_dims=dims, max_sequence_len=max_sequence_len)
-        self.MHA = [MultiHeadAttention(emb_dims=dims, layers=num_layers, keep_prob=keep_prob) for _ in range(n_stacks)]
+        self.MHA = [
+            MultiHeadAttention(emb_dims=dims, num_layers=num_layers, drop_rate=input_drop_rate)
+            for _ in range(n_stacks)
+        ]
         self.FFN = [PositionWiseFFN(emb_dims=dims) for _ in range(n_stacks)]
 
-    def call(self, x_enc, enc_mask, x_dec, dec_mask, context, attention, training=False, **kwargs):
+    # pylint: disable=missing-function-docstring
+    def call(self, x_enc, x_dec, dec_mask, context, attention: BahdanauAttention, training: bool = False):
         x_dec = self.positional_encode(x_dec, dec_mask)
         x_dec = self.drop(x_dec, training=training)
 
@@ -121,7 +127,7 @@ class TransformerDecoder(layers.Layer):
             ), training=training) + x_dec
             x_dec = self.layer_norm(x_dec)
 
-            cross_context = attention(encoded=x_enc, decoded=x_dec)
+            x_dec, cross_context = attention(encoded=x_enc, decoded=x_dec)
             x_dec = self.h_drop(self.projection(x_dec, projection_vector=cross_context), training=training) + x_dec
 
             x_dec = self.layer_norm(x_dec)

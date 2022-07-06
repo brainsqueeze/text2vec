@@ -30,10 +30,10 @@ class TransformerAutoEncoder(Model):
         The placeholder value for OOV terms, by default '<unk>'
     sep : str, optional
         Token separator by default ' '
-    input_keep_prob : float, optional
-        Value between 0 and 1.0 which determines `1 - dropout_rate`, by default 1.0
-    hidden_keep_prob : float, optional
-        Hidden states dropout. Value between 0 and 1.0 which determines `1 - dropout_rate`, by default 1.0
+    input_drop_rate : float, optional
+        Value between 0 and 1.0, by default 0.
+    hidden_drop_rate : float, optional
+        Value between 0 and 1.0, by default 0.
 
     Raises
     ------
@@ -57,7 +57,7 @@ class TransformerAutoEncoder(Model):
     def __init__(self, max_sequence_len: int, embedding_size: int,
                  token_hash: Optional[dict] = None, vocab_size: Optional[int] = None,
                  unknown_token: str = '<unk>', sep: str = ' ',
-                 input_keep_prob: float = 1.0, hidden_keep_prob: float = 1.0):
+                 input_drop_rate: float = 0, hidden_drop_rate: float = 0):
         super().__init__()
 
         if token_hash is None and vocab_size is None:
@@ -66,8 +66,8 @@ class TransformerAutoEncoder(Model):
         params = dict(
             max_sequence_len=max_sequence_len,
             embedding_size=embedding_size,
-            input_keep_prob=input_keep_prob,
-            hidden_keep_prob=hidden_keep_prob
+            input_drop_rate=input_drop_rate,
+            hidden_drop_rate=hidden_drop_rate
         )
 
         if token_hash is not None:
@@ -112,7 +112,6 @@ class TransformerAutoEncoder(Model):
                 decoding_tok, dec_mask, _ = self.embed_layer(decoding_tok[:, :-1])  # skip </s>
                 decoding_tok = self.decode_layer(
                     x_enc=x_enc,
-                    enc_mask=enc_mask,
                     x_dec=decoding_tok,
                     dec_mask=dec_mask,
                     context=context,
@@ -229,10 +228,10 @@ class LstmAutoEncoder(Model):
         The placeholder value for OOV terms, by default '<unk>'
     sep : str, optional
         Token separator by default ' '
-    input_keep_prob : float, optional
-        Value between 0 and 1.0 which determines `1 - dropout_rate`, by default 1.0
-    hidden_keep_prob : float, optional
-        Hidden states dropout. Value between 0 and 1.0 which determines `1 - dropout_rate`, by default 1.0
+    input_drop_rate : float, optional
+        Value between 0 and 1.0, by default 0.
+    hidden_drop_rate : float, optional
+        Value between 0 and 1.0, by default 0.
 
     Raises
     ------
@@ -256,7 +255,7 @@ class LstmAutoEncoder(Model):
     def __init__(self, max_sequence_len: int, embedding_size: int, num_hidden: int = 64,
                  token_hash: Optional[dict] = None, vocab_size: Optional[int] = None,
                  unknown_token: str = '<unk>', sep: str = ' ',
-                 input_keep_prob: float = 1.0, hidden_keep_prob: float = 1.0):
+                 input_drop_rate: float = 0., hidden_drop_rate: float = 0.):
         super().__init__()
 
         if token_hash is None and vocab_size is None:
@@ -265,8 +264,8 @@ class LstmAutoEncoder(Model):
         params = dict(
             max_sequence_len=max_sequence_len,
             embedding_size=embedding_size,
-            input_keep_prob=input_keep_prob,
-            hidden_keep_prob=hidden_keep_prob
+            input_drop_rate=input_drop_rate,
+            hidden_drop_rate=hidden_drop_rate
         )
 
         if token_hash is not None:
