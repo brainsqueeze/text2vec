@@ -1,7 +1,8 @@
 import tensorflow as tf
+from tensorflow.keras import layers
 
 
-class Tokenizer(tf.keras.layers.Layer):
+class Tokenizer(layers.Layer):
     """String-splitting layer.
 
     Parameters
@@ -24,7 +25,7 @@ class Tokenizer(tf.keras.layers.Layer):
     ```
     """
 
-    def __init__(self, sep=' '):
+    def __init__(self, sep: str = ' '):
         super().__init__(name="Tokenizer")
         self.sep = sep
 
@@ -32,7 +33,7 @@ class Tokenizer(tf.keras.layers.Layer):
         return tf.strings.split(corpus, self.sep)
 
 
-class TextInput(tf.keras.layers.Layer):
+class TextInput(layers.Layer):
     """This layer handles the primary text feature transformations and word-embeddings to be passed off
     to the sequence-aware parts of the encoder/decoder pipeline.
 
@@ -75,7 +76,7 @@ class TextInput(tf.keras.layers.Layer):
     ```
     """
 
-    def __init__(self, token_hash, embedding_size, max_sequence_len):
+    def __init__(self, token_hash: dict, embedding_size: int, max_sequence_len: int):
         super().__init__()
         assert isinstance(token_hash, dict)
 
@@ -95,21 +96,20 @@ class TextInput(tf.keras.layers.Layer):
             trainable=True
         )
         self.max_len = tf.constant(max_sequence_len)
-        self.slicer = tf.keras.layers.Lambda(lambda x: x[:, :max_sequence_len], name="sequence-slice")
+        self.slicer = layers.Lambda(lambda x: x[:, :max_sequence_len], name="sequence-slice")
 
-    def call(self, tokens, output_embeddings=False):
-        with tf.name_scope("TextInput"):
-            hashed = tf.ragged.map_flat_values(self.table.lookup, tokens)
-            hashed = self.slicer(hashed)
+    def call(self, tokens: tf.RaggedTensor, output_embeddings: bool = False):
+        hashed = tf.ragged.map_flat_values(self.table.lookup, tokens)
+        hashed = self.slicer(hashed)
 
-            x = tf.ragged.map_flat_values(tf.nn.embedding_lookup, self.embeddings, hashed)
-            if output_embeddings:
-                return x
+        x = tf.ragged.map_flat_values(tf.nn.embedding_lookup, self.embeddings, hashed)
+        if output_embeddings:
+            return x
 
-            x = x.to_tensor(0)
-            x = x * tf.math.sqrt(tf.cast(tf.shape(self.embeddings)[-1], tf.float32))  # sqrt(embedding_size)
+        x = x.to_tensor(0)
+        x = x * tf.math.sqrt(tf.cast(tf.shape(self.embeddings)[-1], tf.float32))  # sqrt(embedding_size)
 
-            seq_lengths = hashed.row_lengths()
-            time_steps = tf.cast(tf.reduce_max(seq_lengths), tf.int32)
-            mask = tf.sequence_mask(lengths=seq_lengths, maxlen=time_steps, dtype=tf.float32)
-            return x, mask, time_steps
+        seq_lengths = hashed.row_lengths()
+        time_steps = tf.cast(tf.reduce_max(seq_lengths), tf.int32)
+        mask = tf.sequence_mask(lengths=seq_lengths, maxlen=time_steps, dtype=tf.float32)
+        return x, mask, time_steps

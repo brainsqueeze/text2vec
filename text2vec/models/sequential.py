@@ -1,11 +1,12 @@
 import tensorflow as tf
+from tensorflow.keras import layers
 
 from .components.attention import BahdanauAttention
 from .components.recurrent import BidirectionalLSTM
 from .components.utils import TensorProjection
 
 
-class RecurrentEncoder(tf.keras.layers.Layer):
+class RecurrentEncoder(layers.Layer):
     """LSTM based encoding pipeline.
 
     Parameters
@@ -43,7 +44,7 @@ class RecurrentEncoder(tf.keras.layers.Layer):
         super().__init__()
         self.max_sequence_length = max_sequence_len
 
-        self.drop = tf.keras.layers.Dropout(1 - input_keep_prob, name="InputDropout")
+        self.drop = layers.Dropout(1 - input_keep_prob, name="InputDropout")
         self.bi_lstm = BidirectionalLSTM(num_layers=num_layers, num_hidden=num_hidden, return_states=True)
         self.attention = BahdanauAttention(size=2 * num_hidden)
 
@@ -59,7 +60,7 @@ class RecurrentEncoder(tf.keras.layers.Layer):
             return x, context
 
 
-class RecurrentDecoder(tf.keras.layers.Layer):
+class RecurrentDecoder(layers.Layer):
     """LSTM based decoding pipeline.
 
     Parameters
@@ -84,24 +85,23 @@ class RecurrentDecoder(tf.keras.layers.Layer):
         self.max_sequence_length = max_sequence_len
         dims = embedding_size
 
-        self.drop = tf.keras.layers.Dropout(1 - input_keep_prob, name="InputDropout")
-        self.h_drop = tf.keras.layers.Dropout(1 - hidden_keep_prob, name="HiddenStateDropout")
+        self.drop = layers.Dropout(1 - input_keep_prob, name="InputDropout")
+        self.h_drop = layers.Dropout(1 - hidden_keep_prob, name="HiddenStateDropout")
         self.projection = TensorProjection()
 
         self.bi_lstm = BidirectionalLSTM(num_layers=num_layers, num_hidden=num_hidden, return_states=False)
-        self.dense = tf.keras.layers.Dense(units=dims, activation=tf.nn.relu)
+        self.dense = layers.Dense(units=dims, activation=tf.nn.relu)
 
     def call(self, x_enc, enc_mask, x_dec, dec_mask, context, training=False, **kwargs):
-        with tf.name_scope("RecurrentDecoder"):
-            enc_mask = tf.expand_dims(enc_mask, axis=-1)
-            dec_mask = tf.expand_dims(dec_mask, axis=-1)
+        enc_mask = tf.expand_dims(enc_mask, axis=-1)
+        dec_mask = tf.expand_dims(dec_mask, axis=-1)
 
-            initial_state = kwargs.get("initial_state")
-            x = self.drop(x_dec * dec_mask, training=training)
-            if initial_state is not None:
-                x = self.bi_lstm(x * dec_mask, initial_states=initial_state[0], training=training)
-            else:
-                x = self.bi_lstm(x * dec_mask, training=training)
-            x = self.h_drop(self.projection(x, projection_vector=context), training=training)
-            x = self.dense(x * dec_mask)
-            return x
+        initial_state = kwargs.get("initial_state")
+        x = self.drop(x_dec * dec_mask, training=training)
+        if initial_state is not None:
+            x = self.bi_lstm(x * dec_mask, initial_states=initial_state[0], training=training)
+        else:
+            x = self.bi_lstm(x * dec_mask, training=training)
+        x = self.h_drop(self.projection(x, projection_vector=context), training=training)
+        x = self.dense(x * dec_mask)
+        return x

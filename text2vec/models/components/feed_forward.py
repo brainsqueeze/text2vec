@@ -1,7 +1,8 @@
 import tensorflow as tf
+from tensorflow.keras import layers
 
 
-class PositionWiseFFN(tf.keras.layers.Layer):
+class PositionWiseFFN(layers.Layer):
     """Position-wise feed-forward network implemented as conv -> relu -> conv.
     1D convolutions of the input tensor are computed to an intermediate hidden dimension, then a final 1D
     convolution is computed of the ReLu output from the intermediate layer to return to the original input shape.
@@ -25,17 +26,17 @@ class PositionWiseFFN(tf.keras.layers.Layer):
     ```
     """
 
-    def __init__(self, emb_dims):
+    def __init__(self, emb_dims: int):
         super().__init__()
 
-        self.conv_inner = tf.keras.layers.Conv1D(
+        self.conv_inner = layers.Conv1D(
             filters=4 * emb_dims,
             kernel_size=1,
             padding='same',
             use_bias=False,
             activation='relu'
         )
-        self.conv_outer = tf.keras.layers.Conv1D(filters=emb_dims, kernel_size=1, padding='same', use_bias=False)
+        self.conv_outer = layers.Conv1D(filters=emb_dims, kernel_size=1, padding='same', use_bias=False)
 
     def call(self, x):
         with tf.name_scope("PositionWiseFFN"):

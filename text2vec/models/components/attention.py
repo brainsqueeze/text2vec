@@ -1,7 +1,10 @@
+from typing import Optional
+
 import tensorflow as tf
+from tensorflow.keras import layers, initializers
 
 
-class ScaledDotAttention(tf.keras.layers.Layer):
+class ScaledDotAttention(layers.Layer):
     """Scaled dot attention layer which computes
     ```
     softmax(Query * permutedim(Key, (3, 1, 2)) / sqrt(dk)) * permutedim(Value, (2, 1, 3))
@@ -50,7 +53,7 @@ class ScaledDotAttention(tf.keras.layers.Layer):
             return tf.einsum('ijk,ikl->ijl', x, value)
 
 
-class BahdanauAttention(tf.keras.layers.Layer):
+class BahdanauAttention(layers.Layer):
     """Layer which computes the Bahdanau attention mechanism either as a self-attention or as
     a encoder-decoder attention.
 
@@ -82,38 +85,29 @@ class BahdanauAttention(tf.keras.layers.Layer):
     ```
     """
 
-    def __init__(self, size):
+    def __init__(self, size: int, dropout_rate: float = 0.):
         super().__init__(name="BahdanauAttention")
 
-        initializer = tf.keras.initializers.GlorotUniform()
-        self.W = tf.Variable(
-            initializer(shape=(size, size)),
-            name='weight',
-            dtype=tf.float32,
-            trainable=True
-        )
-        self.B = tf.Variable(tf.zeros(shape=[size]), name="B", dtype=tf.float32, trainable=True)
-        self.U = tf.Variable(initializer(shape=[size]), name="U", dtype=tf.float32, trainable=True)
+        self.hidden = layers.Dense(units=size, activation="tanh")
+        self.U = tf.Variable(initializers.GlorotUniform()(shape=[size]), name="U", dtype=tf.float32, trainable=True)
+        self.dropout = layers.Dropout(dropout_rate)
 
-    def call(self, encoded, decoded=None):
-        with tf.name_scope("BahdanauAttention"):
-            if decoded is None:
-                score = tf.math.tanh(tf.tensordot(encoded, self.W, axes=[-1, 0]) + self.B)
-                score = tf.reduce_sum(self.U * score, axis=-1)
-                alphas = tf.nn.softmax(score, name="attention-weights")
-                # encoded = encoded * tf.expand_dims(alphas, axis=-1)
-                # return encoded, tf.reduce_sum(encoded, axis=1, name="context-vector")
-                return tf.einsum('ilk,il->ik', encoded, alphas)
+    def call(self, encoded: tf.Tensor, decoded: Optional[tf.Tensor] = None, training: bool = False) -> tf.Tensor:
+        if decoded is None:
+            score = tf.math.reduce_sum(self.U * self.hidden(encoded), axis=-1)
+            alphas = tf.nn.softmax(score)
+            alphas = self.dropout(alphas, training=training)
+            x = tf.expand_dims(alphas, axis=-1) * encoded
+            return x, tf.math.reduce_sum(x, axis=1)
+            # return tf.einsum('ilk,il->ik', encoded, alphas)
 
-            score = tf.einsum("ijm,mn,ikn->ijk", encoded, self.W, decoded)
-            alphas = tf.reduce_mean(score, axis=1)
-            alphas = tf.nn.softmax(alphas)
-            # decoded = decoded * tf.expand_dims(alphas, axis=-1)
-            # return decoded, tf.reduce_sum(decoded, axis=1)
-            return tf.einsum('ilk,il->ik', decoded, alphas)
+        score = tf.einsum("ijm,mn,ikn->ijk", encoded, self.hidden.kernel, decoded)
+        alphas = tf.nn.softmax(score, axis=1)
+        alphas = tf.math.reduce_sum(tf.matmul(alphas, encoded, transpose_a=True), axis=-1)
+        return tf.einsum('ilk,il->ik', decoded, alphas)
 
 
-class SingleHeadAttention(tf.keras.layers.Layer):
+class SingleHeadAttention(layers.Layer):
     """Layer which computes the single-head-attention mechanism as described in
     https://arxiv.org/abs/1706.03762.
 
@@ -160,10 +154,10 @@ class SingleHeadAttention(tf.keras.layers.Layer):
         self.WQ = tf.Variable(initializer(shape=(dims, key_dims)), name="WQ", dtype=tf.float32, trainable=True)
         self.WK = tf.Variable(initializer(shape=(dims, key_dims)), name="WK", dtype=tf.float32, trainable=True)
         self.WV = tf.Variable(initializer(shape=(dims, key_dims)), name="WV", dtype=tf.float32, trainable=True)
-        self.dropout = tf.keras.layers.Dropout(1 - keep_prob)
+        self.dropout = layers.Dropout(1 - keep_prob)
         self.dot_attention = ScaledDotAttention()
 
-    def call(self, inputs, mask_future=False, training=False):
+    def call(self, inputs, mask_future: bool = False, training: bool = False):
         with tf.name_scope("SingleHeadAttention"):
             queries, keys, values = inputs
 
@@ -177,7 +171,7 @@ class SingleHeadAttention(tf.keras.layers.Layer):
             return self.dot_attention(query=head_queries, key=head_keys, value=head_values, mask_future=mask_future)
 
 
-class MultiHeadAttention(tf.keras.layers.Layer):
+class MultiHeadAttention(layers.Layer):
     """Layer which computes the multi-head-attention mechanism as described in
     https://arxiv.org/abs/1706.03762.
 
@@ -213,14 +207,14 @@ class MultiHeadAttention(tf.keras.layers.Layer):
     ```
     """
 
-    def __init__(self, emb_dims, layers=8, keep_prob=1.0):
+    def __init__(self, emb_dims: int, layers: int = 8, keep_prob: float = 1.0):
         super().__init__(name="MultiHeadAttention")
         self.layer_heads = []
         for i in range(layers):
             with tf.name_scope(f"head-{i}"):
                 self.layer_heads.append(SingleHeadAttention(emb_dims=emb_dims, layers=layers, keep_prob=keep_prob))
 
-        self.dense = tf.keras.layers.Dense(units=emb_dims, use_bias=False)
+        self.dense =layers.Dense(units=emb_dims, use_bias=False)
 
     def call(self, inputs, mask_future=False, training=False):
         with tf.name_scope("MultiHeadAttention"):
