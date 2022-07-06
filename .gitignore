@@ -7,6 +7,7 @@
 **/*.dev.yml
 
 wiki_t2v/
+multi_news_t2v/
 
 # JavaScript configs and dependencies
 **/.eslintrc.json

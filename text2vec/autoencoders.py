@@ -101,7 +101,7 @@ class TransformerAutoEncoder(Model):
 
         with tf.GradientTape() as tape:
             with tf.name_scope('Encoding'):
-                x_enc, context, enc_mask = self(encoding_tok, training=True)
+                x_enc, context, _ = self(encoding_tok, training=True)
 
             with tf.name_scope('Decoding'):
                 targets = decoding_tok[:, 1:]  # skip the <s> token with the slice on axis=1

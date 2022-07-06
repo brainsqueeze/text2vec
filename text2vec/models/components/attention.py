@@ -103,13 +103,13 @@ class BahdanauAttention(layers.Layer):
             alphas = self.dropout(alphas, training=training)
             x = tf.expand_dims(alphas, axis=-1) * encoded
             return x, tf.math.reduce_sum(x, axis=1)
-            # return tf.einsum('ilk,il->ik', encoded, alphas)
 
         score = tf.einsum("ijm,mn,ikn->ijk", encoded, self.hidden.kernel, decoded)
         alphas = tf.nn.softmax(score, axis=1)
         alphas = self.dropout(alphas, training=training)
         alphas = tf.math.reduce_sum(tf.matmul(alphas, encoded, transpose_a=True), axis=-1)
-        return tf.einsum('ilk,il->ik', decoded, alphas)
+        x = tf.expand_dims(alphas, axis=-1) * decoded
+        return x, tf.math.reduce_sum(x, axis=1)
 
 
 class SingleHeadAttention(layers.Layer):
