@@ -48,19 +48,22 @@ class Embed(layers.Layer):
             dtype=tf.float32,
             trainable=True
         )
+        self.sqrt_d = tf.math.sqrt(tf.cast(embedding_size, tf.float32))
         self.max_len = tf.constant(max_sequence_len)
         self.slicer = layers.Lambda(lambda x: x[:, :max_sequence_len], name="sequence-slice")
 
     def call(self, token_ids, **kwargs):
         token_ids = self.slicer(token_ids)
         x = tf.ragged.map_flat_values(tf.nn.embedding_lookup, self.embeddings, token_ids)
+        x * self.sqrt_d
         x = x.to_tensor(0)
-        x = x * tf.math.sqrt(tf.cast(tf.shape(self.embeddings)[-1], tf.float32))  # sqrt(embedding_size)
 
-        seq_lengths = token_ids.row_lengths()
-        time_steps = tf.cast(tf.reduce_max(seq_lengths), tf.int32)
-        mask = tf.sequence_mask(lengths=seq_lengths, maxlen=time_steps, dtype=tf.float32)
-        return x, mask, time_steps
+        mask = tf.sequence_mask(
+            lengths=token_ids.row_lengths(),
+            maxlen=token_ids.bounding_shape()[-1],
+            dtype=tf.float32
+        )
+        return x, mask, token_ids.row_lengths()
 
     def get_embedding(self, token_ids: tf.RaggedTensor) -> tf.RaggedTensor:
         """Get the token embeddings for the input IDs.

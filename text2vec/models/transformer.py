@@ -3,7 +3,7 @@ from tensorflow.keras import layers
 from .components.attention import BahdanauAttention
 from .components.attention import MultiHeadAttention
 from .components.feed_forward import PositionWiseFFN
-from .components.utils import PositionalEncoder
+from .components.utils import VariationPositionalEncoder
 from .components.utils import LayerNorm
 from .components.utils import TensorProjection
 
@@ -51,17 +51,17 @@ class TransformerEncoder(layers.Layer):
         super().__init__()
         dims = embedding_size
 
-        self.drop = layers.Dropout(input_drop_rate)
-        self.h_drop = layers.Dropout(hidden_drop_rate)
+        self.positional_encode = VariationPositionalEncoder(emb_dims=dims, max_sequence_len=max_sequence_len)
         self.layer_norm = LayerNorm()
-
-        self.positional_encode = PositionalEncoder(emb_dims=dims, max_sequence_len=max_sequence_len)
         self.MHA = [
             MultiHeadAttention(emb_dims=dims, num_layers=num_layers, drop_rate=input_drop_rate)
             for _ in range(n_stacks)
         ]
         self.FFN = [PositionWiseFFN(emb_dims=dims) for _ in range(n_stacks)]
-        self.attention = BahdanauAttention(size=dims)
+        self.attention = BahdanauAttention(size=dims, drop_rate=hidden_drop_rate)
+
+        self.drop = layers.Dropout(input_drop_rate)
+        self.h_drop = layers.Dropout(hidden_drop_rate)
 
     # pylint: disable=missing-function-docstring
     def call(self, x, mask, training: bool = False):
@@ -102,17 +102,17 @@ class TransformerDecoder(layers.Layer):
         super().__init__()
         dims = embedding_size
 
-        self.drop = layers.Dropout(input_drop_rate)
-        self.h_drop = layers.Dropout(hidden_drop_rate)
         self.layer_norm = LayerNorm()
         self.projection = TensorProjection()
-
-        self.positional_encode = PositionalEncoder(emb_dims=dims, max_sequence_len=max_sequence_len)
+        self.positional_encode = VariationPositionalEncoder(emb_dims=dims, max_sequence_len=max_sequence_len)
         self.MHA = [
             MultiHeadAttention(emb_dims=dims, num_layers=num_layers, drop_rate=input_drop_rate)
             for _ in range(n_stacks)
         ]
         self.FFN = [PositionWiseFFN(emb_dims=dims) for _ in range(n_stacks)]
+
+        self.drop = layers.Dropout(input_drop_rate)
+        self.h_drop = layers.Dropout(hidden_drop_rate)
 
     # pylint: disable=missing-function-docstring
     def call(self, x_enc, x_dec, dec_mask, context, attention: BahdanauAttention, training: bool = False):

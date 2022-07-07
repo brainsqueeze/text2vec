@@ -38,20 +38,20 @@ class ScaledDotAttention(layers.Layer):
 
     def __init__(self):
         super().__init__(name="ScaledDotAttention")
-        self.scale = tf.constant(1e9, dtype=tf.float32)
+        self.neg_inf = tf.constant(-1e9, dtype=tf.float32)
 
     # pylint: disable=missing-function-docstring
     def call(self, query, key, value, mask_future: bool = False):
-        numerator = tf.einsum('ijk,ilk->ijl', query, key)
+        numerator = tf.matmul(query, key, transpose_b=True)
         denominator = tf.sqrt(tf.cast(tf.shape(key)[-1], tf.float32))
 
         if mask_future:
-            upper = (1 + self.scale) * tf.linalg.band_part(tf.ones_like(numerator), num_lower=0, num_upper=-1)
-            mask = 1 - upper
-            numerator *= mask
+            upper = tf.linalg.band_part(tf.ones(tf.shape(numerator)[1:], dtype=tf.float32), num_lower=0, num_upper=-1)
+            diag = tf.linalg.band_part(upper, num_lower=0, num_upper=0)
+            numerator += (self.neg_inf * (upper - diag))
 
         x = tf.nn.softmax(numerator / denominator)
-        return tf.einsum('ijk,ikl->ijl', x, value)
+        return tf.matmul(x, value)
 
 
 class BahdanauAttention(layers.Layer):

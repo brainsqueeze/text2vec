@@ -1,6 +1,6 @@
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras import layers
+from tensorflow.keras import layers, initializers
 
 
 class LayerNorm(layers.Layer):
@@ -63,13 +63,9 @@ class TensorProjection(layers.Layer):
         super().__init__(name="TensorProjection")
 
     def call(self, x, projection_vector):
+        projection_vector = tf.math.l2_normalize(projection_vector, axis=-1)
         inner_product = tf.einsum("ijk,ik->ij", x, projection_vector)
-        time_steps = tf.shape(x)[1]
-        p_vector_norm_squared = tf.norm(projection_vector, axis=1) ** 2
-        p_vector_norm_squared = tf.tile(tf.expand_dims(p_vector_norm_squared, -1), [1, time_steps])
-
-        alpha = tf.divide(inner_product, p_vector_norm_squared)
-        return tf.einsum("ij,ik->ijk", alpha, projection_vector)
+        return tf.einsum("ij,ik->ijk", inner_product, projection_vector)
 
 
 class PositionalEncoder(layers.Layer):
@@ -120,4 +116,50 @@ class PositionalEncoder(layers.Layer):
 
     def call(self, x: tf.Tensor, mask: tf.Tensor):
         time_steps = tf.shape(x)[1]
-        return tf.einsum('ijk,ij->ijk', x + self.encoder[:time_steps, :], mask)
+        return tf.expand_dims(mask, axis=-1) * (x + self.encoder[:time_steps, ...])
+
+
+class VariationPositionalEncoder(layers.Layer):
+    """Learns the relative phases between sequence steps in an attention-based transformer, where there is no
+    inherent sequential ordering.
+
+    Parameters
+    ----------
+    emb_dims : int
+        The word-embedding dimensionality. This value determines the dimensionalities of the hidden weights.
+    max_sequence_len : int
+        Longest sequence seen at training time.
+
+    Examples
+    --------
+    ```python
+    import tensorflow as tf
+    from text2vec.models import TextInput
+    from text2vec.models import utils
+
+    lookup = {'string': 0, 'is': 1, 'example': 2}
+    inputer = TextInput(token_hash=lookup, embedding_size=16, max_sequence_len=10)
+    encoder = utils.VariationPositionalEncoder(emb_dims=16, max_sequence_len=10)
+
+    text = tf.ragged.constant([
+        ["Sample", "string", "."],
+        ["This", "is", "a", "second", "example", "."]
+    ])
+    x, mask, _ = inputer(text)
+    encoder(x, mask)
+    ```
+    """
+
+    def __init__(self, emb_dims: int, max_sequence_len: int):
+        super().__init__()
+
+        self.encoder = tf.Variable(
+            initializers.GlorotUniform()(shape=(max_sequence_len, emb_dims)),
+            dtype=tf.float32,
+            trainable=True,
+            name="positional-encoder"
+        )
+
+    def call(self, x: tf.Tensor, mask: tf.Tensor):
+        time_steps = tf.shape(x)[1]
+        return tf.expand_dims(mask, axis=-1) * (x + self.encoder[:time_steps, ...])

@@ -1,4 +1,4 @@
-from typing import Generator, List, Tuple, Union
+from typing import Generator, Tuple
 import os
 
 import datasets
@@ -9,9 +9,7 @@ from tokenizers import normalizers
 from tokenizers import pre_tokenizers
 from tokenizers import processors
 from tokenizers import trainers
-from nltk.tokenize import PunktSentenceTokenizer
 
-import numpy as np
 import tensorflow as tf
 from tensorflow.keras import optimizers, callbacks
 from tensorflow.keras import backend as K
@@ -26,7 +24,7 @@ EMBEDDING_SIZE = 128
 MAX_SEQUENCE_LENGTH = 512
 
 
-def train_tokenizer() -> Tuple[tokenizers.Tokenizer, Generator, int]:
+def train_tokenizer() -> Tuple[tokenizers.Tokenizer, tf.data.Dataset]:
     tokenizer = tokenizers.Tokenizer(models.WordPiece(unk_token="<unk>"))
     tokenizer.decoder = decoders.WordPiece()
 
@@ -39,14 +37,8 @@ def train_tokenizer() -> Tuple[tokenizers.Tokenizer, Generator, int]:
         pre_tokenizers.Whitespace(),
         pre_tokenizers.Digits(individual_digits=False)
     ])
-    tokenizer.post_processor = processors.TemplateProcessing(
-        single="$A </s>",
-        pair="$A </s> [SEP] <s> $B:1",
-        special_tokens=[("[SEP]", 1), ("<s>", 2), ("</s>", 3)]
-    )
 
-    # dataset = datasets.load_dataset("wikitext", "wikitext-103-raw-v1", split="test")
-    dataset = datasets.load_dataset("multi_news", split="test")
+    dataset = datasets.load_dataset("multi_news", split="train")
 
     def batch_iterator(batch_size=1000):
         for i in range(0, len(dataset), batch_size):
@@ -95,8 +87,6 @@ def main(save_path: str):
         os.mkdir(save_path)
 
     tokenizer, data = train_tokenizer()
-    tokenizer.enable_truncation(2 * 512 + 1)  # encoding + decoding + [SEP] token
-
     with open(f"{save_path}/metadata.tsv", "w") as tsv:
         for token, _ in sorted(tokenizer.get_vocab().items(), key=lambda s: s[-1]):
             tsv.write(f"{token}\n")
@@ -105,8 +95,8 @@ def main(save_path: str):
         max_sequence_len=MAX_SEQUENCE_LENGTH,
         embedding_size=EMBEDDING_SIZE,
         token_hash=tokenizer.get_vocab(),
-        input_drop_rate=0.3,
-        hidden_drop_rate=0.5
+        input_drop_rate=0.2,
+        hidden_drop_rate=0.3
     )
 
     scheduler = RampUpDecaySchedule(EMBEDDING_SIZE, warmup_steps=4000)
