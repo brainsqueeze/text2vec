@@ -1,11 +1,8 @@
 from tensorflow.keras import layers
 
-from .components.attention import BahdanauAttention
-from .components.attention import MultiHeadAttention
+from .components.attention import BahdanauAttention, MultiHeadAttention
 from .components.feed_forward import PositionWiseFFN
-from .components.utils import VariationPositionalEncoder
-from .components.utils import LayerNorm
-from .components.utils import TensorProjection
+from .components.utils import VariationPositionalEncoder, LayerNorm, TensorProjection
 
 
 class TransformerEncoder(layers.Layer):
@@ -30,11 +27,11 @@ class TransformerEncoder(layers.Layer):
     --------
     ```python
     import tensorflow as tf
-    from text2vec.models import TextInputs
+    from text2vec.models import TokenEmbed
     from text2vec.models import TransformerEncoder
 
     lookup = {'string': 0, 'is': 1, 'example': 2}
-    inputer = TextInput(token_hash=lookup, embedding_size=16, max_sequence_len=10)
+    inputer = TokenEmbed(token_hash=lookup, embedding_size=16, max_sequence_len=10)
     encoder = TransformerEncoder(max_sequence_len=10, embedding_size=16, input_keep_prob=0.75)
 
     text = tf.ragged.constant([

@@ -24,11 +24,11 @@ class RecurrentEncoder(layers.Layer):
     --------
     ```python
     import tensorflow as tf
-    from text2vec.models import TextInputs
+    from text2vec.models import TokenEmbed
     from text2vec.models import RecurrentEncoder
 
     lookup = {'string': 0, 'is': 1, 'example': 2}
-    inputer = TextInput(token_hash=lookup, embedding_size=16, max_sequence_len=10)
+    inputer = TokenEmbed(token_hash=lookup, embedding_size=16, max_sequence_len=10)
     encoder = RecurrentEncoder(max_sequence_len=10, num_hidden=8, input_keep_prob=0.75)
 
     text = tf.ragged.constant([

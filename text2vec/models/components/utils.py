@@ -83,11 +83,11 @@ class PositionalEncoder(layers.Layer):
     --------
     ```python
     import tensorflow as tf
-    from text2vec.models import TextInput
+    from text2vec.models import TokenEmbed
     from text2vec.models import utils
 
     lookup = {'string': 0, 'is': 1, 'example': 2}
-    inputer = TextInput(token_hash=lookup, embedding_size=16, max_sequence_len=10)
+    inputer = TokenEmbed(token_hash=lookup, embedding_size=16, max_sequence_len=10)
     encoder = utils.PositionalEncoder(emb_dims=16, max_sequence_len=10)
 
     text = tf.ragged.constant([
@@ -134,11 +134,11 @@ class VariationPositionalEncoder(layers.Layer):
     --------
     ```python
     import tensorflow as tf
-    from text2vec.models import TextInput
+    from text2vec.models import TokenEmbed
     from text2vec.models import utils
 
     lookup = {'string': 0, 'is': 1, 'example': 2}
-    inputer = TextInput(token_hash=lookup, embedding_size=16, max_sequence_len=10)
+    inputer = TokenEmbed(token_hash=lookup, embedding_size=16, max_sequence_len=10)
     encoder = utils.VariationPositionalEncoder(emb_dims=16, max_sequence_len=10)
 
     text = tf.ragged.constant([

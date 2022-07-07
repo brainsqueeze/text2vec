@@ -4,13 +4,9 @@ from typing import Dict, Optional
 import tensorflow as tf
 from tensorflow.keras import layers, Model
 
-from text2vec.models.components.feeder import Tokenizer
-from text2vec.models.components.text_inputs import TokenEmbed
-from text2vec.models.components.text_inputs import Embed
-from text2vec.models.transformer import TransformerEncoder
-from text2vec.models.transformer import TransformerDecoder
-from text2vec.models.sequential import RecurrentEncoder
-from text2vec.models.sequential import RecurrentDecoder
+from text2vec.models.components.text_inputs import TokenEmbed, Embed, Tokenizer
+from text2vec.models.transformer import TransformerEncoder, TransformerDecoder
+from text2vec.models.sequential import RecurrentEncoder, RecurrentDecoder
 
 
 class TransformerAutoEncoder(Model):
@@ -124,7 +120,6 @@ class TransformerAutoEncoder(Model):
                 labels=targets.to_tensor(default_value=0)
             )
             loss = loss * mask_decode
-            # loss = tf.math.reduce_sum(loss, axis=1)
             loss = tf.reduce_mean(loss)
 
         gradients = tape.gradient(loss, self.trainable_variables)
@@ -147,7 +142,6 @@ class TransformerAutoEncoder(Model):
             labels=targets.to_tensor(default_value=0)
         )
         loss = loss * mask_decode
-        # loss = tf.math.reduce_sum(loss, axis=1)
         loss = tf.reduce_mean(loss)
 
         return {"loss": loss, **{m.name: m.result() for m in self.metrics}}
@@ -272,11 +266,6 @@ class LstmAutoEncoder(Model):
         self.decode_layer = RecurrentDecoder(num_hidden=num_hidden, **params)
 
     def call(self, inputs, training: bool = False):  # pylint: disable=missing-function-docstring
-        # tokens = self.tokenizer(tokens)
-        # x_enc, enc_mask, _ = self.embed_layer(tokens, training=training)
-        # x_enc, context, *states = self.encode_layer(x_enc, mask=enc_mask, training=training)
-        # return x_enc, context, enc_mask, states
-
         encoding_text = inputs[0]
         decoding_text = inputs[1] if len(inputs) > 1 else encoding_text
 
@@ -312,7 +301,6 @@ class LstmAutoEncoder(Model):
                 labels=targets.to_tensor(default_value=0)
             )
             loss = loss * mask_decode
-            # loss = tf.math.reduce_sum(loss, axis=1)
             loss = tf.reduce_mean(loss)
 
         gradients = tape.gradient(loss, self.trainable_variables)
@@ -335,7 +323,6 @@ class LstmAutoEncoder(Model):
             labels=targets.to_tensor(default_value=0)
         )
         loss = loss * mask_decode
-        # loss = tf.math.reduce_sum(loss, axis=1)
         loss = tf.reduce_mean(loss)
 
         return {"loss": loss, **{m.name: m.result() for m in self.metrics}}

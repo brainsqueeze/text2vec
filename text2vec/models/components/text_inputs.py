@@ -2,6 +2,37 @@ import tensorflow as tf
 from tensorflow.keras import layers
 
 
+class Tokenizer(layers.Layer):
+    """String-splitting layer.
+
+    Parameters
+    ----------
+    sep : str, optional
+        The token to split the incoming strings by, by default ' '.
+
+    Examples
+    --------
+    ```python
+    import tensorflow as tf
+    from text2vec.models import Tokenizer
+
+    text = tf.constant([
+        "Sample string.",
+        "This is a second example."
+    ])
+    tokenizer = Tokenizer()
+    tokenizer(text)
+    ```
+    """
+
+    def __init__(self, sep: str = ' '):
+        super().__init__(name="Tokenizer")
+        self.sep = sep
+
+    def call(self, corpus):
+        return tf.strings.split(corpus, self.sep)
+
+
 class Embed(layers.Layer):
     """This layer handles the primary text feature transformations and word-embeddings to be passed off
     to the sequence-aware parts of the encoder/decoder pipeline.

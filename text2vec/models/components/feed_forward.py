@@ -39,5 +39,4 @@ class PositionWiseFFN(layers.Layer):
         self.conv_outer = layers.Conv1D(filters=emb_dims, kernel_size=1, padding='same', use_bias=False)
 
     def call(self, x):
-        with tf.name_scope("PositionWiseFFN"):
-            return self.conv_outer(self.conv_inner(x))
+        return self.conv_outer(self.conv_inner(x))

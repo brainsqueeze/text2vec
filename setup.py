@@ -24,9 +24,4 @@ setup(
         ]
     ),
     packages=find_packages(exclude=["bin"]),
-    entry_points={
-        "console_scripts": [
-            "text2vec_main=text2vec.bin.main:main",
-        ],
-    }
 )
