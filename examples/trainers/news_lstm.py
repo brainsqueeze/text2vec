@@ -86,9 +86,9 @@ def main(save_path: str):
         os.mkdir(save_path)
 
     tokenizer, data = train_tokenizer()
-    with open(f"{save_path}/metadata.tsv", "w") as tsv:
+    with open(f"{save_path}/metadata.tsv", "w", encoding="utf8") as tsv:
         for token, _ in sorted(tokenizer.get_vocab().items(), key=lambda s: s[-1]):
-            tsv.write(f"{token}\n")
+            tsv.write(f"{token.encode('utf8')}\n")
 
     model = LstmAutoEncoder(
         max_sequence_len=MAX_SEQUENCE_LENGTH,
@@ -115,7 +115,7 @@ def main(save_path: str):
     projector.visualize_embeddings(logdir=save_path, config=config)
 
     model.fit(
-        x=data.prefetch(8).batch(64),
+        x=data.prefetch(8).shuffle(10_000).batch(64),
         callbacks=[
             callbacks.TensorBoard(log_dir=save_path, write_graph=True, update_freq=100),
             callbacks.LambdaCallback(

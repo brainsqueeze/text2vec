@@ -37,7 +37,7 @@ def train_tokenizer() -> Tuple[tokenizers.Tokenizer, tf.data.Dataset]:
         pre_tokenizers.Digits(individual_digits=False)
     ])
 
-    dataset = datasets.load_dataset("multi_news", split="test")
+    dataset = datasets.load_dataset("multi_news", split="train")
 
     def batch_iterator(batch_size=1000):
         for i in range(0, len(dataset), batch_size):
@@ -86,9 +86,9 @@ def main(save_path: str):
         os.mkdir(save_path)
 
     tokenizer, data = train_tokenizer()
-    with open(f"{save_path}/metadata.tsv", "w") as tsv:
+    with open(f"{save_path}/metadata.tsv", "w", encoding="utf8") as tsv:
         for token, _ in sorted(tokenizer.get_vocab().items(), key=lambda s: s[-1]):
-            tsv.write(f"{token}\n")
+            tsv.write(f"{token.encode('utf8')}\n")
 
     model = TransformerAutoEncoder(
         max_sequence_len=MAX_SEQUENCE_LENGTH,
@@ -115,7 +115,7 @@ def main(save_path: str):
     projector.visualize_embeddings(logdir=save_path, config=config)
 
     model.fit(
-        x=data.prefetch(8).batch(64),
+        x=data.prefetch(8).shuffle(10_000).batch(64),
         callbacks=[
             callbacks.TensorBoard(log_dir=save_path, write_graph=True, update_freq=100),
             callbacks.LambdaCallback(
@@ -126,7 +126,7 @@ def main(save_path: str):
                 )
             )
         ],
-        epochs=2
+        epochs=10
     )
 
     model.save(
