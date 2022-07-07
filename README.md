@@ -5,20 +5,16 @@ Models for contextual embedding of arbitrary texts.
 ## Setup
 ---
 
-To get started, one should have a flavor of TensorFlow installed, with
-version `>=2.4.1`. One can run
+To get started, one should have a flavor of TensorFlow installed, with version `>=2.4.1`. One can run
 ```bash
 pip install tensorflow>=2.4.1
 ```
-If one wishes to run the examples, some additional dependencies
-from HuggingFace will need to be installed. The full installation
-looks like
+If one wishes to run the examples, some additional dependencies from HuggingFace will need to be installed. The full installation looks like
 ```bash
 pip install tensorflow>=2.4.1 tokenizers datasets
 ```
 
-To install the core components as an import-able Python library
-simply run
+To install the core components as an import-able Python library simply run
 
 ```bash
 pip install git+https://github.com/brainsqueeze/text2vec.git
@@ -51,7 +47,21 @@ This is an adapted bi-directional LSTM encoder-decoder model with a self-attenti
 
 Both models are trained using Adam SGD with the learning-rate decay program in [[2](https://arxiv.org/abs/1706.03762)].
 
-The pre-built auto-encoder models inherit from [tf.keras.Model](https://www.tensorflow.org/api_docs/python/tf/keras/Model), and as such they can be trained using the [fit method](https://www.tensorflow.org/api_docs/python/tf/keras/Model#fit). An example of training on Wikitext data is available in the [examples folder](./examples/trainers/wiki_transformer.py). This uses HuggingFace [tokenizers](https://huggingface.co/docs/tokenizers/python/latest/) and [datasets](https://huggingface.co/docs/datasets/master/).
+The pre-built auto-encoder models inherit from [tf.keras.Model](https://www.tensorflow.org/api_docs/python/tf/keras/Model), and as such they can be trained using the [fit method](https://www.tensorflow.org/api_docs/python/tf/keras/Model#fit). Training examples are available in the [examples folder](./examples/trainers). This uses HuggingFace [tokenizers](https://huggingface.co/docs/tokenizers/python/latest/) and [datasets](https://huggingface.co/docs/datasets/master/).
+
+If you wish to run the example training scripts then you will need to clone the repository
+```bash
+git clone https://github.com/brainsqueeze/text2vec.git
+```
+and then run either 
+```bash
+python -m examples.trainers.news_transformer
+```
+for the attention-based transformer, or 
+```bash
+python -m examples.trainers.news_lstm
+```
+for the LSTM-based encoder. These examples use the [Multi-News](https://github.com/Alex-Fabbri/Multi-News) dataset via [HuggingFace](https://huggingface.co/datasets/multi_news).
 
 
 ## Python API
@@ -120,10 +130,7 @@ Text2vec includes a Python API with convenient classes for handling attention an
 ## Inference Demo
 ---
 
-Once a model is fully trained then a demo API can be run, along with a small 
-UI to interact with the REST API. This demo attempts to use the trained model 
-to condense long bodies of text into the most important sentences, using the 
-inferred embedded context vectors.
+Once a model is fully trained then a demo API can be run, along with a small UI to interact with the REST API. This demo attempts to use the trained model to condense long bodies of text into the most important sentences, using the inferred embedded context vectors.
 
 To start the model server simply run 
 ```bash
