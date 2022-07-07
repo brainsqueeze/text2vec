@@ -10,16 +10,19 @@ function formatOutput (ajaxData, container) {
 
     for (var i = 0; i < data.length; i++) {
       let text = data[i].text
-      let score = data[i].relevanceScore
-      let lightness = (1 - score) * 100.0
+      let score = data[i].score
+      let lightness = score * 100.
 
-      outputHtml += `<p class="response-line" style="color: hsl(140, 100%, ${lightness}%)">${text}</p>`
+      if (score > 0.5)
+        outputHtml += `<p class="response-line" style="background-color: hsl(140, 100%, ${lightness}%)">${text}</p>`
+      else
+        outputHtml += `<p class="response-line" style="background-color: hsl(140, 100%, ${lightness}%); color: white">${text}</p>`
     }
     container.append(outputHtml)
   }
 }
 
-$(document).ready(function () {
+$(function () {
   $('#clear').on('click', function () {
     $('.text-input.main').val('')
     $('.response-container').empty()
@@ -27,12 +30,12 @@ $(document).ready(function () {
 
   $('#go').on('click', function () {
     let text = $('.text-input.main').val()
-    let data = { body: text }
+    let data = { text: text }
 
     $('.response-container').empty()
 
     $.ajax({
-      url: 'http://localhost:8008/condense',
+      url: '/summarize',
       data: data,
       type: 'POST',
       dataType: 'json',
