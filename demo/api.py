@@ -5,13 +5,11 @@ import json
 import re
 
 from flask import Flask, request, Response, send_from_directory
-from flask_cors import cross_origin
 from tornado.log import enable_pretty_logging
 from tornado.httpserver import HTTPServer
 from tornado.wsgi import WSGIContainer
 from tornado.ioloop import IOLoop
 import tornado.autoreload
-# from tornado import web
 import tornado
 
 import tensorflow as tf
@@ -79,7 +77,6 @@ def root():
 
 
 @app.route("/summarize", methods=["GET", "POST"])
-# @cross_origin(origins=['*'], allow_headers=['Content-Type', 'Authorization'])
 def summarize():
     if request.is_json:
         payload = request.json

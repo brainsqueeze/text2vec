@@ -18,8 +18,6 @@ setup(
     extras_require=dict(
         serving=[
             "flask",
-            "flask-cors",
-            "nltk",
             "tornado"
         ]
     ),

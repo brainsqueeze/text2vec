@@ -37,7 +37,7 @@ def train_tokenizer() -> Tuple[tokenizers.Tokenizer, tf.data.Dataset]:
         pre_tokenizers.Digits(individual_digits=False)
     ])
 
-    dataset = datasets.load_dataset("multi_news", split="train")
+    dataset = datasets.load_dataset("multi_news", split="test")
 
     def batch_iterator(batch_size=1000):
         for i in range(0, len(dataset), batch_size):
@@ -126,7 +126,7 @@ def main(save_path: str):
                 )
             )
         ],
-        epochs=10
+        epochs=2
     )
 
     model.save(

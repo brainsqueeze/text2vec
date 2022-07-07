@@ -130,14 +130,17 @@ Text2vec includes a Python API with convenient classes for handling attention an
 ## Inference Demo
 ---
 
-Once a model is fully trained then a demo API can be run, along with a small UI to interact with the REST API. This demo attempts to use the trained model to condense long bodies of text into the most important sentences, using the inferred embedded context vectors.
-
+Trained text2vec models can be demonstrated from a lightweight app included in this repository. The demo runs extractive summarization from long bodies of text using the attention vectors of the encoding latent space. To get started, you will need to clone the repository and then install additional dependencies:
+```bash
+git clone https://github.com/brainsqueeze/text2vec.git
+cd text2vec
+pip install flask tornado
+```
 To start the model server simply run 
 ```bash
-text2vec_main --run=infer --yaml_config=/path/to/config.yml
+python demo/api.py --model_dir /absolute/saved_model/parent/dir
 ```
-A demonstration webpage is included in [demo](demo) at 
-[context.html](demo/context.html).
+The `model_dir` CLI parameter must be an absolute path to the directory containing the `/saved_model` folder and the `tokenizer.json` file from a text2vec model with an `embed` signature. A demonstration app is served on port 9090.
 
 ## References
 ---
