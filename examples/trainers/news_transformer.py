@@ -1,4 +1,4 @@
-from typing import Generator, Tuple
+from typing import Tuple
 import os
 
 import datasets
@@ -7,7 +7,6 @@ from tokenizers import models
 from tokenizers import decoders
 from tokenizers import normalizers
 from tokenizers import pre_tokenizers
-from tokenizers import processors
 from tokenizers import trainers
 
 import tensorflow as tf

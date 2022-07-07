@@ -40,13 +40,14 @@ class RecurrentEncoder(layers.Layer):
     ```
     """
 
-    def __init__(self, max_sequence_len, num_hidden, num_layers=2, input_drop_rate: float = 0., **kwargs):
+    def __init__(self, max_sequence_len, num_hidden, num_layers=2,
+                 input_drop_rate: float = 0., hidden_drop_rate: float = 0., **kwargs):
         super().__init__()
         self.max_sequence_length = max_sequence_len
 
         self.drop = layers.Dropout(input_drop_rate)
         self.bi_lstm = BidirectionalLSTM(num_layers=num_layers, num_hidden=num_hidden, return_states=True)
-        self.attention = BahdanauAttention(size=2 * num_hidden)
+        self.attention = BahdanauAttention(size=2 * num_hidden, drop_rate=hidden_drop_rate)
 
     # pylint: disable=missing-function-docstring
     def call(self, x, mask, training: bool = False):
@@ -54,7 +55,7 @@ class RecurrentEncoder(layers.Layer):
             mask = tf.expand_dims(mask, axis=-1)
             x = self.drop(x, training=training)
             x, states = self.bi_lstm(x * mask, training=training)
-            context = self.attention(x * mask)
+            x, context = self.attention(x * mask)
 
             if training:
                 return x, context, states
@@ -94,11 +95,9 @@ class RecurrentDecoder(layers.Layer):
         self.dense = layers.Dense(units=dims, activation=tf.nn.relu)
 
     # pylint: disable=missing-function-docstring
-    def call(self, x_enc, enc_mask, x_dec, dec_mask, context, training: bool = False):
-        enc_mask = tf.expand_dims(enc_mask, axis=-1)
+    def call(self, x_enc, x_dec, dec_mask, context, initial_state=None, training: bool = False):
         dec_mask = tf.expand_dims(dec_mask, axis=-1)
 
-        initial_state = kwargs.get("initial_state")
         x = self.drop(x_dec * dec_mask, training=training)
         if initial_state is not None:
             x = self.bi_lstm(x * dec_mask, initial_states=initial_state[0], training=training)
