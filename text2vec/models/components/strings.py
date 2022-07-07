@@ -1,9 +1,10 @@
 import tensorflow as tf
+from tensorflow.kersa import layers
 
 from text2vec.models import Tokenizer
 
 
-class SubStringFinderMask(tf.keras.layers.Layer):
+class SubStringFinderMask(layers.Layer):
     """Performs substring masking based on whether the substring is found in the input text
     in its entirety. This returns a ragged boolean tensor with the same ragged shape as input substrings.
 
@@ -35,7 +36,7 @@ class SubStringFinderMask(tf.keras.layers.Layer):
     def __init__(self, sep: str = ' '):
         super().__init__()
         self.tokenizer = Tokenizer(sep)
-        self.match = tf.keras.layers.Lambda(lambda x: tf.strings.regex_full_match(input=x[0], pattern=x[1]))
+        self.match = layers.Lambda(lambda x: tf.strings.regex_full_match(input=x[0], pattern=x[1]))
 
         # this is designed to approximate the functionality in re.escape
         self.special_chars = r'[\(\)\[\]\{\}\?\*\+\-\|\^\$\\\\\.\&\~\#\\\t\\\n\\\r\\\v\\\f]'

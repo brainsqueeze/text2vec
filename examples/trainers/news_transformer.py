@@ -1,4 +1,4 @@
-from typing import Generator, List, Tuple, Union
+from typing import Tuple
 import os
 
 import datasets
@@ -7,22 +7,23 @@ from tokenizers import models
 from tokenizers import decoders
 from tokenizers import normalizers
 from tokenizers import pre_tokenizers
-from tokenizers import processors
 from tokenizers import trainers
-from nltk.tokenize import PunktSentenceTokenizer
 
-import numpy as np
 import tensorflow as tf
+from tensorflow.keras import optimizers, callbacks
+from tensorflow.keras import backend as K
 from tensorboard.plugins import projector
 
 from text2vec.autoencoders import TransformerAutoEncoder
 from text2vec.optimizer_tools import RampUpDecaySchedule
 
 os.environ["TOKENIZERS_PARALLELISM"] = "true"
-sent_tokenizer = PunktSentenceTokenizer().tokenize
+root = os.path.dirname(os.path.abspath(__file__))
+EMBEDDING_SIZE = 128
+MAX_SEQUENCE_LENGTH = 512
 
 
-def train_tokenizer() -> Tuple[tokenizers.Tokenizer, Generator, int]:
+def train_tokenizer() -> Tuple[tokenizers.Tokenizer, tf.data.Dataset]:
     tokenizer = tokenizers.Tokenizer(models.WordPiece(unk_token="<unk>"))
     tokenizer.decoder = decoders.WordPiece()
 
@@ -35,17 +36,13 @@ def train_tokenizer() -> Tuple[tokenizers.Tokenizer, Generator, int]:
         pre_tokenizers.Whitespace(),
         pre_tokenizers.Digits(individual_digits=False)
     ])
-    tokenizer.post_processor = processors.TemplateProcessing(
-        single="$A </s>",
-        pair="$A </s> [SEP] <s> $B:1",
-        special_tokens=[("[SEP]", 1), ("<s>", 2), ("</s>", 3)]
-    )
 
-    dataset = datasets.load_dataset("wikitext", "wikitext-103-raw-v1", split="test")
+    dataset = datasets.load_dataset("multi_news", split="test")
 
     def batch_iterator(batch_size=1000):
         for i in range(0, len(dataset), batch_size):
-            yield dataset[i: i + batch_size]["text"]
+            for key in dataset.features:
+                yield dataset[i: i + batch_size][key]
 
     tokenizer.train_from_iterator(
         batch_iterator(),
@@ -55,14 +52,32 @@ def train_tokenizer() -> Tuple[tokenizers.Tokenizer, Generator, int]:
         )
     )
 
+    tokenizer.enable_truncation(2 * MAX_SEQUENCE_LENGTH + 3)  # 2 for the [SEP], <s>, </s> tokens
+    tokenizer.post_processor = tokenizers.processors.TemplateProcessing(
+        single="$A",
+        pair="$A:0 [SEP] <s> $B:1 </s>",
+        special_tokens=[
+            ("[SEP]", 1),
+            ("<s>", 2),
+            ("</s>", 3)
+        ]
+    )
+
     def generator():
         for record in dataset:
-            if record['text'].strip() != '':
-                for sentence in sent_tokenizer(record['text']):
-                    yield sentence
+            if record["document"] and record["summary"]:
+                enc, dec = ' '.join(tokenizer.encode(
+                    record["document"],
+                    pair=record["summary"]
+                ).tokens).split(' [SEP] ', maxsplit=2)
 
-    data = tf.data.Dataset.from_generator(generator, output_signature=(tf.TensorSpec(shape=(None), dtype=tf.string)))
-    data = data.map(tf.strings.strip, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+                if enc.strip() != "" and dec != "":
+                    yield enc, dec
+
+    data = tf.data.Dataset.from_generator(
+        generator,
+        output_signature=(tf.TensorSpec(shape=(None), dtype=tf.string), tf.TensorSpec(shape=(None), dtype=tf.string))
+    )
     return tokenizer, data
 
 
@@ -71,38 +86,20 @@ def main(save_path: str):
         os.mkdir(save_path)
 
     tokenizer, data = train_tokenizer()
-    tokenizer.enable_truncation(2 * 512 + 1)  # encoding + decoding + [SEP] token
-
     with open(f"{save_path}/metadata.tsv", "w") as tsv:
         for token, _ in sorted(tokenizer.get_vocab().items(), key=lambda s: s[-1]):
             tsv.write(f"{token}\n")
 
-    def encode(x):
-        def token_mapper(text: Union[str, List[str]]):
-            text = text.numpy()
-
-            if isinstance(text, np.ndarray):
-                enc, dec = [], []
-                for batch in tokenizer.encode_batch([(t.decode('utf8'), t.decode('utf8')) for t in text]):
-                    enc_, dec_ = ' '.join(batch.tokens).split(' [SEP] ')
-                    enc.append(enc_)
-                    dec.append(dec_)
-                return (enc, dec)
-
-            text = text.decode('utf8')
-            enc, dec = ' '.join(tokenizer.encode(text, pair=text).tokens).split(' [SEP] ')
-            return (enc, dec)
-
-        return tf.py_function(token_mapper, inp=[x], Tout=[tf.string, tf.string])
-
     model = TransformerAutoEncoder(
-        max_sequence_len=512,
-        embedding_size=128,
+        max_sequence_len=MAX_SEQUENCE_LENGTH,
+        embedding_size=EMBEDDING_SIZE,
         token_hash=tokenizer.get_vocab(),
-        input_keep_prob=0.7,
-        hidden_keep_prob=0.5
+        input_drop_rate=0.2,
+        hidden_drop_rate=0.3
     )
-    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=RampUpDecaySchedule(embedding_size=128)))
+
+    scheduler = RampUpDecaySchedule(EMBEDDING_SIZE, warmup_steps=4000)
+    model.compile(optimizer=optimizers.Adam(scheduler(0).numpy()))
     checkpoint = tf.train.Checkpoint(Classifier=model, optimizer=model.optimizer)
     checkpoint_manager = tf.train.CheckpointManager(checkpoint, save_path, max_to_keep=3)
 
@@ -117,18 +114,19 @@ def main(save_path: str):
     embeddings_config.metadata_path = f"{save_path}/metadata.tsv"
     projector.visualize_embeddings(logdir=save_path, config=config)
 
-    data = data.map(encode, num_parallel_calls=tf.data.experimental.AUTOTUNE)
     model.fit(
         x=data.prefetch(8).batch(64),
         callbacks=[
-            tf.keras.callbacks.TensorBoard(
-                log_dir=save_path,
-                write_graph=True,
-                update_freq=100
-            ),
-            tf.keras.callbacks.LambdaCallback(on_epoch_end=lambda epoch, logs: checkpoint_manager.save())
+            callbacks.TensorBoard(log_dir=save_path, write_graph=True, update_freq=100),
+            callbacks.LambdaCallback(
+                on_epoch_end=lambda epoch, logs: checkpoint_manager.save(),
+                on_batch_end=lambda batch, logs: K.set_value(
+                    model.optimizer.lr,
+                    K.get_value(scheduler(model.optimizer.iterations))
+                )
+            )
         ],
-        epochs=1
+        epochs=2
     )
 
     model.save(
@@ -142,4 +140,4 @@ def main(save_path: str):
 
 
 if __name__ == '__main__':
-    main(save_path='./wiki_t2v')
+    main(save_path=f'{root}/../../multi_news_t2v')

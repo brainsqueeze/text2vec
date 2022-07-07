@@ -1,11 +1,12 @@
 import tensorflow as tf
+from tensorflow.keras import layers
 
 from .components.attention import BahdanauAttention
 from .components.recurrent import BidirectionalLSTM
 from .components.utils import TensorProjection
 
 
-class RecurrentEncoder(tf.keras.layers.Layer):
+class RecurrentEncoder(layers.Layer):
     """LSTM based encoding pipeline.
 
     Parameters
@@ -16,18 +17,18 @@ class RecurrentEncoder(tf.keras.layers.Layer):
         Dimensionality of hidden LSTM layer weights.
     num_layers : int, optional
         Number of hidden LSTM layers, by default 2
-    input_keep_prob : float, optional
-        Value between 0 and 1.0 which determines `1 - dropout_rate`, by default 1.0.
+    input_drop_rate : float, optional
+        Value between 0 and 1.0, by default 0.
 
     Examples
     --------
     ```python
     import tensorflow as tf
-    from text2vec.models import TextInputs
+    from text2vec.models import TokenEmbed
     from text2vec.models import RecurrentEncoder
 
     lookup = {'string': 0, 'is': 1, 'example': 2}
-    inputer = TextInput(token_hash=lookup, embedding_size=16, max_sequence_len=10)
+    inputer = TokenEmbed(token_hash=lookup, embedding_size=16, max_sequence_len=10)
     encoder = RecurrentEncoder(max_sequence_len=10, num_hidden=8, input_keep_prob=0.75)
 
     text = tf.ragged.constant([
@@ -39,27 +40,29 @@ class RecurrentEncoder(tf.keras.layers.Layer):
     ```
     """
 
-    def __init__(self, max_sequence_len, num_hidden, num_layers=2, input_keep_prob=1.0, **kwargs):
+    def __init__(self, max_sequence_len, num_hidden, num_layers=2,
+                 input_drop_rate: float = 0., hidden_drop_rate: float = 0., **kwargs):
         super().__init__()
         self.max_sequence_length = max_sequence_len
 
-        self.drop = tf.keras.layers.Dropout(1 - input_keep_prob, name="InputDropout")
+        self.drop = layers.Dropout(input_drop_rate)
         self.bi_lstm = BidirectionalLSTM(num_layers=num_layers, num_hidden=num_hidden, return_states=True)
-        self.attention = BahdanauAttention(size=2 * num_hidden)
+        self.attention = BahdanauAttention(size=2 * num_hidden, drop_rate=hidden_drop_rate)
 
-    def call(self, x, mask, training=False, **kwargs):
+    # pylint: disable=missing-function-docstring
+    def call(self, x, mask, training: bool = False):
         with tf.name_scope("RecurrentEncoder"):
             mask = tf.expand_dims(mask, axis=-1)
             x = self.drop(x, training=training)
             x, states = self.bi_lstm(x * mask, training=training)
-            context = self.attention(x * mask)
+            x, context = self.attention(x * mask)
 
             if training:
                 return x, context, states
             return x, context
 
 
-class RecurrentDecoder(tf.keras.layers.Layer):
+class RecurrentDecoder(layers.Layer):
     """LSTM based decoding pipeline.
 
     Parameters
@@ -72,36 +75,34 @@ class RecurrentDecoder(tf.keras.layers.Layer):
         Dimensionality of the word-embeddings, by default 50.
     num_layers : int, optional
         Number of hidden LSTM layers, by default 2
-    input_keep_prob : float, optional
-        Value between 0 and 1.0 which determines `1 - dropout_rate`, by default 1.0.
-    hidden_keep_prob : float, optional
-        Hidden states dropout. Value between 0 and 1.0 which determines `1 - dropout_rate`, by default 1.0.
+    input_drop_rate : float, optional
+        Value between 0 and 1.0, by default 0.
+    hidden_drop_rate : float, optional
+        Value between 0 and 1.0, by default 0.
     """
 
     def __init__(self, max_sequence_len, num_hidden, embedding_size=50, num_layers=2,
-                 input_keep_prob=1.0, hidden_keep_prob=1.0):
+                 input_drop_rate: float = 0., hidden_drop_rate: float = 0.):
         super().__init__()
         self.max_sequence_length = max_sequence_len
         dims = embedding_size
 
-        self.drop = tf.keras.layers.Dropout(1 - input_keep_prob, name="InputDropout")
-        self.h_drop = tf.keras.layers.Dropout(1 - hidden_keep_prob, name="HiddenStateDropout")
+        self.drop = layers.Dropout(input_drop_rate)
+        self.h_drop = layers.Dropout(hidden_drop_rate)
         self.projection = TensorProjection()
 
         self.bi_lstm = BidirectionalLSTM(num_layers=num_layers, num_hidden=num_hidden, return_states=False)
-        self.dense = tf.keras.layers.Dense(units=dims, activation=tf.nn.relu)
+        self.dense = layers.Dense(units=dims, activation=tf.nn.relu)
 
-    def call(self, x_enc, enc_mask, x_dec, dec_mask, context, training=False, **kwargs):
-        with tf.name_scope("RecurrentDecoder"):
-            enc_mask = tf.expand_dims(enc_mask, axis=-1)
-            dec_mask = tf.expand_dims(dec_mask, axis=-1)
+    # pylint: disable=missing-function-docstring
+    def call(self, x_enc, x_dec, dec_mask, context, initial_state=None, training: bool = False):
+        dec_mask = tf.expand_dims(dec_mask, axis=-1)
 
-            initial_state = kwargs.get("initial_state")
-            x = self.drop(x_dec * dec_mask, training=training)
-            if initial_state is not None:
-                x = self.bi_lstm(x * dec_mask, initial_states=initial_state[0], training=training)
-            else:
-                x = self.bi_lstm(x * dec_mask, training=training)
-            x = self.h_drop(self.projection(x, projection_vector=context), training=training)
-            x = self.dense(x * dec_mask)
-            return x
+        x = self.drop(x_dec * dec_mask, training=training)
+        if initial_state is not None:
+            x = self.bi_lstm(x * dec_mask, initial_states=initial_state[0], training=training)
+        else:
+            x = self.bi_lstm(x * dec_mask, training=training)
+        x = self.h_drop(self.projection(x, projection_vector=context), training=training)
+        x = self.dense(x * dec_mask)
+        return x

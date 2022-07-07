@@ -1,18 +1,15 @@
 # pylint: disable=too-many-ancestors
-from typing import Dict
+from typing import Dict, Optional
 
 import tensorflow as tf
+from tensorflow.keras import layers, Model
 
-from text2vec.models.components.feeder import Tokenizer
-from text2vec.models.components.text_inputs import TokenEmbed
-from text2vec.models.components.text_inputs import Embed
-from text2vec.models.transformer import TransformerEncoder
-from text2vec.models.transformer import TransformerDecoder
-from text2vec.models.sequential import RecurrentEncoder
-from text2vec.models.sequential import RecurrentDecoder
+from text2vec.models.components.text_inputs import TokenEmbed, Embed, Tokenizer
+from text2vec.models.transformer import TransformerEncoder, TransformerDecoder
+from text2vec.models.sequential import RecurrentEncoder, RecurrentDecoder
 
 
-class TransformerAutoEncoder(tf.keras.Model):
+class TransformerAutoEncoder(Model):
     """Wrapper model class to combine the transformer based encoder-decoder training pipeline.
 
     Parameters
@@ -27,12 +24,12 @@ class TransformerAutoEncoder(tf.keras.Model):
         Size of the vocabulary. Set this if pre-computing token IDs to pass to the model, by default None
     unknown_token : str, optional
         The placeholder value for OOV terms, by default '<unk>'
-    sep : int, optional
+    sep : str, optional
         Token separator by default ' '
-    input_keep_prob : float, optional
-        Value between 0 and 1.0 which determines `1 - dropout_rate`, by default 1.0
-    hidden_keep_prob : float, optional
-        Hidden states dropout. Value between 0 and 1.0 which determines `1 - dropout_rate`, by default 1.0
+    input_drop_rate : float, optional
+        Value between 0 and 1.0, by default 0.
+    hidden_drop_rate : float, optional
+        Value between 0 and 1.0, by default 0.
 
     Raises
     ------
@@ -54,8 +51,9 @@ class TransformerAutoEncoder(tf.keras.Model):
     """
 
     def __init__(self, max_sequence_len: int, embedding_size: int,
-                 token_hash: dict = None, vocab_size: int = None, unknown_token: str = '<unk>', sep: int = ' ',
-                 input_keep_prob: float = 1.0, hidden_keep_prob: float = 1.0):
+                 token_hash: Optional[dict] = None, vocab_size: Optional[int] = None,
+                 unknown_token: str = '<unk>', sep: str = ' ',
+                 input_drop_rate: float = 0, hidden_drop_rate: float = 0):
         super().__init__()
 
         if token_hash is None and vocab_size is None:
@@ -64,8 +62,8 @@ class TransformerAutoEncoder(tf.keras.Model):
         params = dict(
             max_sequence_len=max_sequence_len,
             embedding_size=embedding_size,
-            input_keep_prob=input_keep_prob,
-            hidden_keep_prob=hidden_keep_prob
+            input_drop_rate=input_drop_rate,
+            hidden_drop_rate=hidden_drop_rate
         )
 
         if token_hash is not None:
@@ -77,54 +75,51 @@ class TransformerAutoEncoder(tf.keras.Model):
                 unknown_token=unknown_token
             )
         else:
-            self.tokenizer = tf.keras.layers.Lambda(lambda x: x)  # this is only for consistency, identity map
+            self.tokenizer = layers.Lambda(lambda x: x)  # this is only for consistency, identity map
             self.embed_layer = Embed(
                 vocab_size=vocab_size,
                 embedding_size=embedding_size,
                 max_sequence_len=max_sequence_len
             )
 
-        self.encode_layer = TransformerEncoder(n_stacks=1, layers=8, **params)
-        self.decode_layer = TransformerDecoder(n_stacks=1, layers=8, **params)
+        self.encode_layer = TransformerEncoder(n_stacks=1, num_layers=8, **params)
+        self.decode_layer = TransformerDecoder(n_stacks=1, num_layers=8, **params)
 
-    def call(self, tokens, **kwargs):
-        tokens = self.tokenizer(tokens)
-        x_enc, enc_mask, _ = self.embed_layer(tokens, **kwargs)
-        x_enc, context = self.encode_layer(x_enc, mask=enc_mask, training=kwargs.get("training", False))
-        return x_enc, context, enc_mask
+    def call(self, inputs, training: bool = False):  # pylint: disable=missing-function-docstring
+        encoding_text = inputs[0]
+        decoding_text = inputs[1] if len(inputs) > 1 else encoding_text
 
-    def train_step(self, data):
-        encoding_tok, decoding_tok = data
-        decoding_tok = self.tokenizer(decoding_tok)
+        encode_tokens = self.tokenizer(encoding_text)
+        x_embed, mask_encode, _ = self.embed_layer(encode_tokens, training=training)
+        x_encode, context = self.encode_layer(x_embed, mask=mask_encode, training=training)
 
+        decode_tokens = self.tokenizer(decoding_text)
+        x_decode, mask_decode, _ = self.embed_layer(decode_tokens[:, :-1])  # skip </s>
+        x_decode = self.decode_layer(
+            x_enc=x_encode,
+            x_dec=x_decode,
+            dec_mask=mask_decode,
+            context=context,
+            attention=self.encode_layer.attention,
+            training=training
+        )
+
+        return x_embed, x_decode, mask_decode, decode_tokens
+
+    def train_step(self, data):  # pylint: disable=missing-function-docstring
         with tf.GradientTape() as tape:
-            with tf.name_scope('Encoding'):
-                x_enc, context, enc_mask = self(encoding_tok, training=True)
+            _, x_decode, mask_decode, decode_tokens = self(data, training=True)
 
-            with tf.name_scope('Decoding'):
-                targets = decoding_tok[:, 1:]  # skip the <s> token with the slice on axis=1
-                if isinstance(self.embed_layer, TokenEmbed):
-                    targets = tf.ragged.map_flat_values(self.embed_layer.table.lookup, targets)
-                targets = self.embed_layer.slicer(targets)
+            targets = decode_tokens[:, 1:]  # skip the <s> token with the slice on axis=1
+            if isinstance(self.embed_layer, TokenEmbed):
+                targets = tf.ragged.map_flat_values(self.embed_layer.table.lookup, targets)
+            targets = self.embed_layer.slicer(targets)
 
-                decoding_tok, dec_mask, _ = self.embed_layer(decoding_tok[:, :-1])  # skip </s>
-                decoding_tok = self.decode_layer(
-                    x_enc=x_enc,
-                    enc_mask=enc_mask,
-                    x_dec=decoding_tok,
-                    dec_mask=dec_mask,
-                    context=context,
-                    attention=self.encode_layer.attention,
-                    training=True
-                )
-                decoding_tok = tf.tensordot(decoding_tok, self.embed_layer.embeddings, axes=[2, 1])
-
-            loss = loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
-                logits=decoding_tok,
+            loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
+                logits=tf.tensordot(x_decode, self.embed_layer.embeddings, axes=[2, 1]),
                 labels=targets.to_tensor(default_value=0)
             )
-            loss = loss * dec_mask
-            loss = tf.math.reduce_sum(loss, axis=1)
+            loss = loss * mask_decode
             loss = tf.reduce_mean(loss)
 
         gradients = tape.gradient(loss, self.trainable_variables)
@@ -134,36 +129,21 @@ class TransformerAutoEncoder(tf.keras.Model):
             return {"loss": loss, 'learning_rate': self.optimizer.learning_rate(self.optimizer.iterations)}
         return {"loss": loss, 'learning_rate': self.optimizer.learning_rate}
 
-    def test_step(self, data):
-        encoding_tok, decoding_tok = data
-        decoding_tok = self.tokenizer(decoding_tok)
+    def test_step(self, data):  # pylint: disable=missing-function-docstring
+        _, x_decode, mask_decode, decode_tokens = self(data, training=False)
 
-        with tf.name_scope('Encoding'):
-            x_enc, context, enc_mask = self(encoding_tok, training=False)
-
-        with tf.name_scope('Decoding'):
-            targets = tf.ragged.map_flat_values(self.embed_layer.table.lookup, decoding_tok[:, 1:])  # skip <s>
-            targets = self.embed_layer.slicer(targets)
-
-            decoding_tok, dec_mask, _ = self.embed_layer(decoding_tok[:, :-1])  # skip </s>
-            decoding_tok = self.decode_layer(
-                x_enc=x_enc,
-                enc_mask=enc_mask,
-                x_dec=decoding_tok,
-                dec_mask=dec_mask,
-                context=context,
-                attention=self.encode_layer.attention,
-                training=False
-            )
-            decoding_tok = tf.tensordot(decoding_tok, self.embed_layer.embeddings, axes=[2, 1])
+        targets = decode_tokens[:, 1:]  # skip the <s> token with the slice on axis=1
+        if isinstance(self.embed_layer, TokenEmbed):
+            targets = tf.ragged.map_flat_values(self.embed_layer.table.lookup, targets)
+        targets = self.embed_layer.slicer(targets)
 
         loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
-            logits=decoding_tok,
+            logits=tf.tensordot(x_decode, self.embed_layer.embeddings, axes=[2, 1]),
             labels=targets.to_tensor(default_value=0)
         )
-        loss = loss * dec_mask
-        loss = tf.math.reduce_sum(loss, axis=1)
+        loss = loss * mask_decode
         loss = tf.reduce_mean(loss)
+
         return {"loss": loss, **{m.name: m.result() for m in self.metrics}}
 
     @tf.function(input_signature=[tf.TensorSpec(shape=[None], dtype=tf.string)])
@@ -182,11 +162,13 @@ class TransformerAutoEncoder(tf.keras.Model):
             and (batch_size, max_sequence_len, embedding_size) respectively.
         """
 
-        sequences, attention, _ = self(sentences, training=False)
-        return {"sequences": sequences, "attention": attention}
+        tokens = self.tokenizer(sentences)
+        x, mask, _ = self.embed_layer(tokens, training=False)
+        x, context = self.encode_layer(x, mask=mask, training=False)
+        return {"sequences": x, "attention": context}
 
     @tf.function(input_signature=[tf.TensorSpec(shape=[None], dtype=tf.string)])
-    def token_embed(self, sentences) -> Dict[str, tf.Tensor]:
+    def token_embed(self, sentences) -> Dict[str, tf.RaggedTensor]:
         """Takes batches of free text and returns word embeddings along with the associate token.
 
         Parameters
@@ -196,19 +178,16 @@ class TransformerAutoEncoder(tf.keras.Model):
 
         Returns
         -------
-        Dict[str, tf.Tensor]
-            Padded tokens and embedding vectors with shapes (batch_size, max_sequence_len)
-            and (batch_size, max_sequence_len, embedding_size) respectively.
+        Dict[str, tf.RaggedTensor]
+            Ragged tokens and embedding tensors with shapes (batch_size, None)
+            and (batch_size, None, embedding_size) respectively.
         """
 
         tokens = self.tokenizer(sentences)
-        return {
-            "tokens": tokens.to_tensor('</>'),
-            "embeddings": self.embed_layer.get_embedding(tokens).to_tensor(0)
-        }
+        return {"tokens": tokens, "embeddings": self.embed_layer.get_embedding(tokens)}
 
 
-class LstmAutoEncoder(tf.keras.Model):
+class LstmAutoEncoder(Model):
     """Wrapper model class to combine the LSTM based encoder-decoder training pipeline.
 
     Parameters
@@ -225,12 +204,12 @@ class LstmAutoEncoder(tf.keras.Model):
         Size of the vocabulary. Set this if pre-computing token IDs to pass to the model, by default None
     unknown_token : str, optional
         The placeholder value for OOV terms, by default '<unk>'
-    sep : int, optional
+    sep : str, optional
         Token separator by default ' '
-    input_keep_prob : float, optional
-        Value between 0 and 1.0 which determines `1 - dropout_rate`, by default 1.0
-    hidden_keep_prob : float, optional
-        Hidden states dropout. Value between 0 and 1.0 which determines `1 - dropout_rate`, by default 1.0
+    input_drop_rate : float, optional
+        Value between 0 and 1.0, by default 0.
+    hidden_drop_rate : float, optional
+        Value between 0 and 1.0, by default 0.
 
     Raises
     ------
@@ -252,8 +231,9 @@ class LstmAutoEncoder(tf.keras.Model):
     """
 
     def __init__(self, max_sequence_len: int, embedding_size: int, num_hidden: int = 64,
-                 token_hash: dict = None, vocab_size: int = None, unknown_token: str = '<unk>', sep: int = ' ',
-                 input_keep_prob: float = 1.0, hidden_keep_prob: float = 1.0):
+                 token_hash: Optional[dict] = None, vocab_size: Optional[int] = None,
+                 unknown_token: str = '<unk>', sep: str = ' ',
+                 input_drop_rate: float = 0., hidden_drop_rate: float = 0.):
         super().__init__()
 
         if token_hash is None and vocab_size is None:
@@ -262,8 +242,8 @@ class LstmAutoEncoder(tf.keras.Model):
         params = dict(
             max_sequence_len=max_sequence_len,
             embedding_size=embedding_size,
-            input_keep_prob=input_keep_prob,
-            hidden_keep_prob=hidden_keep_prob
+            input_drop_rate=input_drop_rate,
+            hidden_drop_rate=hidden_drop_rate
         )
 
         if token_hash is not None:
@@ -275,7 +255,7 @@ class LstmAutoEncoder(tf.keras.Model):
                 unknown_token=unknown_token
             )
         else:
-            self.tokenizer = tf.keras.layers.Lambda(lambda x: x)  # this is only for consistency, identity map
+            self.tokenizer = layers.Lambda(lambda x: x)  # this is only for consistency, identity map
             self.embed_layer = Embed(
                 vocab_size=vocab_size,
                 embedding_size=embedding_size,
@@ -285,44 +265,42 @@ class LstmAutoEncoder(tf.keras.Model):
         self.encode_layer = RecurrentEncoder(num_hidden=num_hidden, **params)
         self.decode_layer = RecurrentDecoder(num_hidden=num_hidden, **params)
 
-    def call(self, tokens, **kwargs):
-        tokens = self.tokenizer(tokens)
-        x_enc, enc_mask, _ = self.embed_layer(tokens, **kwargs)
-        x_enc, context, *states = self.encode_layer(x_enc, mask=enc_mask, training=kwargs.get("training", False))
-        return x_enc, context, enc_mask, states
+    def call(self, inputs, training: bool = False):  # pylint: disable=missing-function-docstring
+        encoding_text = inputs[0]
+        decoding_text = inputs[1] if len(inputs) > 1 else encoding_text
 
-    def train_step(self, data):
-        encoding_tok, decoding_tok = data
-        decoding_tok = self.tokenizer(decoding_tok)
+        encode_tokens = self.tokenizer(encoding_text)
+        x_embed, mask_encode, _ = self.embed_layer(encode_tokens, training=training)
+        x_encode, context, *states = self.encode_layer(x_embed, mask=mask_encode, training=training)
 
+        decode_tokens = self.tokenizer(decoding_text)
+        x_decode, mask_decode, _ = self.embed_layer(decode_tokens[:, :-1])  # skip </s>
+        x_decode = self.decode_layer(
+            x_enc=x_encode,
+            x_dec=x_decode,
+            dec_mask=mask_decode,
+            context=context,
+            # attention=self.encode_layer.attention,
+            initial_state=states,
+            training=training
+        )
+
+        return x_embed, x_decode, mask_decode, decode_tokens
+
+    def train_step(self, data):  # pylint: disable=missing-function-docstring
         with tf.GradientTape() as tape:
-            with tf.name_scope('Encoding'):
-                x_enc, context, enc_mask, states = self(encoding_tok, training=True)
+            _, x_decode, mask_decode, decode_tokens = self(data, training=True)
 
-            with tf.name_scope('Decoding'):
-                targets = decoding_tok[:, 1:]  # skip the <s> token with the slice on axis=1
-                if isinstance(self.embed_layer, TokenEmbed):
-                    targets = tf.ragged.map_flat_values(self.embed_layer.table.lookup, targets)
-                targets = self.embed_layer.slicer(targets)
+            targets = decode_tokens[:, 1:]  # skip the <s> token with the slice on axis=1
+            if isinstance(self.embed_layer, TokenEmbed):
+                targets = tf.ragged.map_flat_values(self.embed_layer.table.lookup, targets)
+            targets = self.embed_layer.slicer(targets)
 
-                decoding_tok, dec_mask, _ = self.embed_layer(decoding_tok[:, :-1])
-                decoding_tok = self.decode_layer(
-                    x_enc=x_enc,
-                    enc_mask=enc_mask,
-                    x_dec=decoding_tok,
-                    dec_mask=dec_mask,
-                    context=context,
-                    initial_state=states,
-                    training=True
-                )
-                decoding_tok = tf.tensordot(decoding_tok, self.embed_layer.embeddings, axes=[2, 1])
-
-            loss = loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
-                logits=decoding_tok,
+            loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
+                logits=tf.tensordot(x_decode, self.embed_layer.embeddings, axes=[2, 1]),
                 labels=targets.to_tensor(default_value=0)
             )
-            loss = loss * dec_mask
-            loss = tf.math.reduce_sum(loss, axis=1)
+            loss = loss * mask_decode
             loss = tf.reduce_mean(loss)
 
         gradients = tape.gradient(loss, self.trainable_variables)
@@ -332,37 +310,19 @@ class LstmAutoEncoder(tf.keras.Model):
             return {"loss": loss, 'learning_rate': self.optimizer.learning_rate(self.optimizer.iterations)}
         return {"loss": loss, 'learning_rate': self.optimizer.learning_rate}
 
-    def test_step(self, data):
-        encoding_tok, decoding_tok = data
-        decoding_tok = self.tokenizer(decoding_tok)
+    def test_step(self, data):  # pylint: disable=missing-function-docstring
+        _, x_decode, mask_decode, decode_tokens = self(data, training=False)
 
-        with tf.name_scope('Encoding'):
-            x_enc, context, enc_mask, states = self(encoding_tok, training=False)
+        targets = decode_tokens[:, 1:]  # skip the <s> token with the slice on axis=1
+        if isinstance(self.embed_layer, TokenEmbed):
+            targets = tf.ragged.map_flat_values(self.embed_layer.table.lookup, targets)
+        targets = self.embed_layer.slicer(targets)
 
-        with tf.name_scope('Decoding'):
-            targets = decoding_tok[:, 1:]  # skip the <s> token with the slice on axis=1
-            if isinstance(self.embed_layer, TokenEmbed):
-                targets = tf.ragged.map_flat_values(self.embed_layer.table.lookup, targets)
-            targets = self.embed_layer.slicer(targets)
-
-            decoding_tok, dec_mask, _ = self.embed_layer(decoding_tok[:, :-1])
-            decoding_tok = self.decode_layer(
-                x_enc=x_enc,
-                enc_mask=enc_mask,
-                x_dec=decoding_tok,
-                dec_mask=dec_mask,
-                context=context,
-                initial_state=states,
-                training=False
-            )
-            decoding_tok = tf.tensordot(decoding_tok, self.embed_layer.embeddings, axes=[2, 1])
-
-        loss = loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
-            logits=decoding_tok,
+        loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
+            logits=tf.tensordot(x_decode, self.embed_layer.embeddings, axes=[2, 1]),
             labels=targets.to_tensor(default_value=0)
         )
-        loss = loss * dec_mask
-        loss = tf.math.reduce_sum(loss, axis=1)
+        loss = loss * mask_decode
         loss = tf.reduce_mean(loss)
 
         return {"loss": loss, **{m.name: m.result() for m in self.metrics}}
@@ -383,11 +343,13 @@ class LstmAutoEncoder(tf.keras.Model):
             and (batch_size, max_sequence_len, embedding_size) respectively.
         """
 
-        sequences, attention, *args = self(sentences, training=False)
-        return {"sequences": sequences, "attention": attention}
+        tokens = self.tokenizer(sentences)
+        x, mask, _ = self.embed_layer(tokens, training=False)
+        x, context, *_ = self.encode_layer(x, mask=mask, training=False)
+        return {"sequences": x, "attention": context}
 
     @tf.function(input_signature=[tf.TensorSpec(shape=[None], dtype=tf.string)])
-    def token_embed(self, sentences) -> Dict[str, tf.Tensor]:
+    def token_embed(self, sentences) -> Dict[str, tf.RaggedTensor]:
         """Takes batches of free text and returns word embeddings along with the associate token.
 
         Parameters
@@ -397,13 +359,13 @@ class LstmAutoEncoder(tf.keras.Model):
 
         Returns
         -------
-        Dict[str, tf.Tensor]
-            Padded tokens and embedding vectors with shapes (batch_size, max_sequence_len)
-            and (batch_size, max_sequence_len, embedding_size) respectively.
+        Dict[str, tf.RaggedTensor]
+            Ragged tokens and embedding tensors with shapes (batch_size, None)
+            and (batch_size, None, embedding_size) respectively.
         """
 
         tokens = self.tokenizer(sentences)
         return {
-            "tokens": tokens.to_tensor('</>'),
-            "embeddings": self.embed_layer.get_embedding(tokens).to_tensor(0)
+            "tokens": tokens,
+            "embeddings": self.embed_layer.get_embedding(tokens)
         }

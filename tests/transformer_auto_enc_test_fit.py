@@ -1,5 +1,5 @@
-import os
 from typing import List, Union
+import os
 
 import datasets
 import tokenizers
@@ -12,6 +12,7 @@ from tokenizers import trainers
 
 import numpy as np
 import tensorflow as tf
+from tensorflow.keras import optimizers
 from text2vec.autoencoders import TransformerAutoEncoder
 
 root = os.path.dirname(os.path.abspath(__file__))
@@ -85,21 +86,22 @@ def main():
         return tf.py_function(token_mapper, inp=[x], Tout=[tf.string, tf.string])
 
     data = tf.data.Dataset.from_generator(data_gen, output_signature=(tf.TensorSpec(shape=(None), dtype=tf.string)))
-    data = data.map(tf.strings.strip, num_parallel_calls=tf.data.experimental.AUTOTUNE)
-    data = data.map(encode, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+    data = data.map(tf.strings.strip, num_parallel_calls=tf.data.AUTOTUNE)
+    data = data.map(encode, num_parallel_calls=tf.data.AUTOTUNE)
 
     model = TransformerAutoEncoder(
         max_sequence_len=512,
         embedding_size=128,
         token_hash=tokenizer.get_vocab(),
-        input_keep_prob=0.7,
-        hidden_keep_prob=0.5
+        input_drop_rate=0.3,
+        hidden_drop_rate=0.5
     )
-    model.compile(optimizer=tf.keras.optimizers.Adam(), run_eagerly=True)
-    model.fit(x=data.prefetch(10).batch(16), epochs=1)
+    model.compile(optimizer=optimizers.Adam(1e-4), run_eagerly=False)
+    model.fit(x=data.prefetch(10).batch(16), epochs=10)
 
-    model(['here is a sentence', 'try another one'])
-    model.predict(['here is a sentence', 'try another one'])
+    x = model.embed(['this is about physics', 'this is not about physics'])["attention"]
+    x = tf.linalg.l2_normalize(x, axis=-1)
+    print(x.numpy() @ x.numpy().T)
     return model
 
 

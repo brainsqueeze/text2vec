@@ -1,7 +1,39 @@
 import tensorflow as tf
+from tensorflow.keras import layers
 
 
-class Embed(tf.keras.layers.Layer):
+class Tokenizer(layers.Layer):
+    """String-splitting layer.
+
+    Parameters
+    ----------
+    sep : str, optional
+        The token to split the incoming strings by, by default ' '.
+
+    Examples
+    --------
+    ```python
+    import tensorflow as tf
+    from text2vec.models import Tokenizer
+
+    text = tf.constant([
+        "Sample string.",
+        "This is a second example."
+    ])
+    tokenizer = Tokenizer()
+    tokenizer(text)
+    ```
+    """
+
+    def __init__(self, sep: str = ' '):
+        super().__init__(name="Tokenizer")
+        self.sep = sep
+
+    def call(self, corpus):
+        return tf.strings.split(corpus, self.sep)
+
+
+class Embed(layers.Layer):
     """This layer handles the primary text feature transformations and word-embeddings to be passed off
     to the sequence-aware parts of the encoder/decoder pipeline.
 
@@ -47,20 +79,22 @@ class Embed(tf.keras.layers.Layer):
             dtype=tf.float32,
             trainable=True
         )
+        self.sqrt_d = tf.math.sqrt(tf.cast(embedding_size, tf.float32))
         self.max_len = tf.constant(max_sequence_len)
-        self.slicer = tf.keras.layers.Lambda(lambda x: x[:, :max_sequence_len], name="sequence-slice")
+        self.slicer = layers.Lambda(lambda x: x[:, :max_sequence_len], name="sequence-slice")
 
     def call(self, token_ids, **kwargs):
-        with tf.name_scope("TokenIds"):
-            token_ids = self.slicer(token_ids)
-            x = tf.ragged.map_flat_values(tf.nn.embedding_lookup, self.embeddings, token_ids)
-            x = x.to_tensor(0)
-            x = x * tf.math.sqrt(tf.cast(tf.shape(self.embeddings)[-1], tf.float32))  # sqrt(embedding_size)
+        token_ids = self.slicer(token_ids)
+        x = tf.ragged.map_flat_values(tf.nn.embedding_lookup, self.embeddings, token_ids)
+        x * self.sqrt_d
+        x = x.to_tensor(0)
 
-            seq_lengths = token_ids.row_lengths()
-            time_steps = tf.cast(tf.reduce_max(seq_lengths), tf.int32)
-            mask = tf.sequence_mask(lengths=seq_lengths, maxlen=time_steps, dtype=tf.float32)
-            return x, mask, time_steps
+        mask = tf.sequence_mask(
+            lengths=token_ids.row_lengths(),
+            maxlen=token_ids.bounding_shape()[-1],
+            dtype=tf.float32
+        )
+        return x, mask, token_ids.row_lengths()
 
     def get_embedding(self, token_ids: tf.RaggedTensor) -> tf.RaggedTensor:
         """Get the token embeddings for the input IDs.
@@ -76,8 +110,7 @@ class Embed(tf.keras.layers.Layer):
             Sequences of token embeddings with the same number of time steps as `token_ids`
         """
 
-        with tf.name_scope("TokenEmbeddings"):
-            return tf.ragged.map_flat_values(tf.nn.embedding_lookup, self.embeddings, token_ids)
+        return tf.ragged.map_flat_values(tf.nn.embedding_lookup, self.embeddings, token_ids)
 
 
 class TokenEmbed(tf.keras.layers.Layer):

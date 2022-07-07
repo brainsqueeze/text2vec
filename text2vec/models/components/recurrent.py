@@ -1,7 +1,8 @@
 import tensorflow as tf
+from tensorflow.keras import layers
 
 
-class BidirectionalLSTM(tf.keras.layers.Layer):
+class BidirectionalLSTM(layers.Layer):
     """Bi-directional LSTM with the option to warm initialize with previous states.
 
     Parameters
@@ -30,11 +31,11 @@ class BidirectionalLSTM(tf.keras.layers.Layer):
     ```
     """
 
-    def __init__(self, num_layers=2, num_hidden=32, return_states=False):
+    def __init__(self, num_layers: int = 2, num_hidden: int = 32, return_states: bool = False):
         super().__init__()
         self.num_layers = num_layers
         self.return_states = return_states
-        lstm = tf.keras.layers.LSTM
+        lstm = layers.LSTM
 
         params = dict(
             units=num_hidden,
@@ -45,7 +46,7 @@ class BidirectionalLSTM(tf.keras.layers.Layer):
 
         self.FWD = [lstm(**params, name=f"forward-{i}") for i in range(num_layers)]
         self.BWD = [lstm(**params, name=f"backward-{i}", go_backwards=True) for i in range(num_layers)]
-        self.concat = tf.keras.layers.Concatenate()
+        self.concat = layers.Concatenate()
 
     @staticmethod
     def __make_inputs(inputs, initial_states=None, layer=0):
@@ -59,19 +60,18 @@ class BidirectionalLSTM(tf.keras.layers.Layer):
         return fwd_inputs, bwd_inputs
 
     def call(self, inputs, initial_states=None, training=False):
-        with tf.name_scope("BidirectionalLSTM"):
-            layer = 0
-            for forward, backward in zip(self.FWD, self.BWD):
-                fwd_inputs, bwd_inputs = self.__make_inputs(inputs, initial_states=initial_states, layer=layer)
+        layer = 0
+        for forward, backward in zip(self.FWD, self.BWD):
+            fwd_inputs, bwd_inputs = self.__make_inputs(inputs, initial_states=initial_states, layer=layer)
 
-                if self.return_states:
-                    decode_forward, *forward_state = forward(**fwd_inputs, training=training)
-                    decode_backward, *backward_state = backward(**bwd_inputs, training=training)
-                else:
-                    decode_forward = forward(**fwd_inputs, training=training)
-                    decode_backward = backward(**bwd_inputs, training=training)
-                inputs = self.concat([decode_forward, decode_backward])
-                layer += 1
             if self.return_states:
-                return inputs, [forward_state, backward_state]
-            return inputs
+                decode_forward, *forward_state = forward(**fwd_inputs, training=training)
+                decode_backward, *backward_state = backward(**bwd_inputs, training=training)
+            else:
+                decode_forward = forward(**fwd_inputs, training=training)
+                decode_backward = backward(**bwd_inputs, training=training)
+            inputs = self.concat([decode_forward, decode_backward])
+            layer += 1
+        if self.return_states:
+            return inputs, [forward_state, backward_state]
+        return inputs
