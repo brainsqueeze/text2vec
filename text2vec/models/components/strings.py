@@ -1,5 +1,5 @@
 import tensorflow as tf
-from tensorflow.kersa import layers
+from tensorflow.keras import layers
 
 from text2vec.models import Tokenizer
 
@@ -74,3 +74,7 @@ class SubStringFinderMask(layers.Layer):
             row_lengths=substrings.row_lengths()
         )
         return tf.ragged.map_flat_values(self.find_match, ragged_texts, tf.strings.join([pre, substrings, post]))
+
+    def get_config(self):
+        base_config = super().get_config()
+        return {**base_config, "sep": self.sep}
