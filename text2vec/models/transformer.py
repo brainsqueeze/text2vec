@@ -71,7 +71,7 @@ class TransformerEncoder(layers.Layer):
             x = self.h_drop(ffn(x), training=training) + x
             x = self.layer_norm(x)
 
-        x, context = self.attention(x)
+        x, context = self.attention(x, training=training)
         return x, context
 
 
@@ -124,7 +124,7 @@ class TransformerDecoder(layers.Layer):
             ), training=training) + x_dec
             x_dec = self.layer_norm(x_dec)
 
-            x_dec, cross_context = attention(encoded=x_enc, decoded=x_dec)
+            x_dec, cross_context = attention(encoded=x_enc, decoded=x_dec, training=training)
             x_dec = self.h_drop(self.projection(x_dec, projection_vector=cross_context), training=training) + x_dec
 
             x_dec = self.layer_norm(x_dec)
