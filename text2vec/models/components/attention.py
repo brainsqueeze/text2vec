@@ -37,7 +37,7 @@ class ScaledDotAttention(layers.Layer):
     """
 
     def __init__(self):
-        super().__init__(name="ScaledDotAttention")
+        super().__init__()
         self.neg_inf = tf.constant(-1e9, dtype=tf.float32)
 
     # pylint: disable=missing-function-docstring
@@ -78,7 +78,7 @@ class BahdanauAttention(layers.Layer):
     dims = 12
     encoded_sequences = tf.random.uniform(shape=[4, 7, dims])
     decoded_sequences = tf.random.uniform(shape=[4, 11, dims])
-    attention = BahdanauAttention(dims)
+    attention = BahdanauAttention(dims, drop_rate=0.25)
 
     # self attention
     attention(encoded_sequences)
@@ -89,7 +89,7 @@ class BahdanauAttention(layers.Layer):
     """
 
     def __init__(self, size: int, drop_rate: float = 0.):
-        super().__init__(name="BahdanauAttention")
+        super().__init__()
 
         self.hidden = layers.Dense(units=size, activation="tanh")
         self.U = tf.Variable(initializers.GlorotUniform()(shape=[size]), name="U", dtype=tf.float32, trainable=True)
@@ -141,7 +141,7 @@ class SingleHeadAttention(layers.Layer):
     V = tf.random.uniform(shape=[4, 5, 12])
 
     # 25% dropout rate
-    attention = SingleHeadAttention(emb_dims=12, keep_prob=0.75)
+    attention = SingleHeadAttention(emb_dims=12, drop_rate=0.25)
 
     # masking and dropout turned on
     attention(inputs=(Q, K, V), mask_future=True, training=True)
@@ -149,7 +149,7 @@ class SingleHeadAttention(layers.Layer):
     """
 
     def __init__(self, emb_dims, num_layers: int = 8, drop_rate: float = 0.):
-        super().__init__(name="SingleHeadAttention")
+        super().__init__()
         assert isinstance(num_layers, int) and num_layers > 0
 
         dims = emb_dims
@@ -205,7 +205,7 @@ class MultiHeadAttention(layers.Layer):
     V = tf.random.uniform(shape=[4, 5, 12])
 
     # 25% dropout rate
-    attention = MultiHeadAttention(emb_dims=12, keep_prob=0.75)
+    attention = MultiHeadAttention(emb_dims=12, drop_rate=0.25)
 
     # masking and dropout turned on
     attention(inputs=(Q, K, V), mask_future=True, training=True)
@@ -213,7 +213,7 @@ class MultiHeadAttention(layers.Layer):
     """
 
     def __init__(self, emb_dims: int, num_layers: int = 8, drop_rate: float = 0.):
-        super().__init__(name="MultiHeadAttention")
+        super().__init__()
         self.layer_heads = [
             SingleHeadAttention(emb_dims=emb_dims, num_layers=num_layers, drop_rate=drop_rate)
             for _ in range(num_layers)

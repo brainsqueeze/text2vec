@@ -26,7 +26,7 @@ class Tokenizer(layers.Layer):
     """
 
     def __init__(self, sep: str = ' '):
-        super().__init__(name="Tokenizer")
+        super().__init__()
         self.sep = sep
 
     def call(self, corpus):
