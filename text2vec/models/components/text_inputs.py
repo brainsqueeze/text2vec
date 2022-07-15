@@ -26,11 +26,15 @@ class Tokenizer(layers.Layer):
     """
 
     def __init__(self, sep: str = ' '):
-        super().__init__(name="Tokenizer")
+        super().__init__()
         self.sep = sep
 
     def call(self, corpus):
         return tf.strings.split(corpus, self.sep)
+
+    def get_config(self):
+        base_config = super().get_config()
+        return {**base_config, "sep": self.sep}
 
 
 class Embed(layers.Layer):
@@ -113,7 +117,7 @@ class Embed(layers.Layer):
         return tf.ragged.map_flat_values(tf.nn.embedding_lookup, self.embeddings, token_ids)
 
 
-class TokenEmbed(tf.keras.layers.Layer):
+class TokenEmbed(layers.Layer):
     """This layer handles the primary text feature transformations and word-embeddings to be passed off
     to the sequence-aware parts of the encoder/decoder pipeline.
 
@@ -155,13 +159,17 @@ class TokenEmbed(tf.keras.layers.Layer):
     def __init__(self, token_hash: dict, embedding_size: int, max_sequence_len: int, unknown_token: str = '<unk>'):
         super().__init__()
 
-        self.table = tf.lookup.StaticHashTable(
-            tf.lookup.KeyValueTensorInitializer(
-                keys=list(token_hash.keys()),
-                values=list(token_hash.values())
-            ),
-            default_value=token_hash.get(unknown_token)
-        )
+        self.lookup = token_hash
+        self.unknown_token = unknown_token
+
+        with tf.init_scope():
+            self.table = tf.lookup.StaticHashTable(
+                tf.lookup.KeyValueTensorInitializer(
+                    keys=list(token_hash.keys()),
+                    values=list(token_hash.values())
+                ),
+                default_value=token_hash.get(unknown_token)
+            )
         self.embed_layer = Embed(
             vocab_size=len(token_hash),
             embedding_size=embedding_size,
@@ -169,9 +177,8 @@ class TokenEmbed(tf.keras.layers.Layer):
         )
 
     def call(self, tokens, **kwargs):
-        with tf.name_scope("TextInput"):
-            hashed = tf.ragged.map_flat_values(self.table.lookup, tokens)
-            return self.embed_layer(hashed, **kwargs)
+        hashed = tf.ragged.map_flat_values(self.table.lookup, tokens)
+        return self.embed_layer(hashed, **kwargs)
 
     def get_embedding(self, tokens: tf.RaggedTensor) -> tf.RaggedTensor:
         """Get the token embeddings for the input tokens.
@@ -187,9 +194,18 @@ class TokenEmbed(tf.keras.layers.Layer):
             Sequences of token embeddings with the same number of time steps as `tokens`
         """
 
-        with tf.name_scope("TextToEmbedding"):
-            hashed = tf.ragged.map_flat_values(self.table.lookup, tokens)
-            return self.embed_layer.get_embedding(hashed)
+        hashed = tf.ragged.map_flat_values(self.table.lookup, tokens)
+        return self.embed_layer.get_embedding(hashed)
+
+    def get_config(self):
+        base_config = super().get_config()
+        return {
+            **base_config,
+            "token_hash": self.lookup,
+            "embedding_size": int(tf.shape(self.embeddings)[1].numpy()),
+            "max_sequence_len": int(self.embed_layer.max_len.numpy()),
+            "unknown_token": self.unknown_token
+        }
 
     @property
     def slicer(self):

@@ -28,7 +28,7 @@ class LayerNorm(layers.Layer):
     """
 
     def __init__(self, epsilon: float = 1e-8, scale: float = 1.0, bias: float = 0):
-        super().__init__(name="LayerNorm")
+        super().__init__()
         self.epsilon = tf.constant(epsilon, dtype=tf.float32)
         self.scale = tf.constant(scale, dtype=tf.float32)
         self.bias = tf.constant(bias, dtype=tf.float32)
@@ -60,7 +60,7 @@ class TensorProjection(layers.Layer):
     """
 
     def __init__(self):
-        super().__init__(name="TensorProjection")
+        super().__init__()
 
     def call(self, x, projection_vector):
         projection_vector = tf.math.l2_normalize(projection_vector, axis=-1)

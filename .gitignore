@@ -16,6 +16,8 @@ multi_news_t2v*/
 **/node_modules
 
 # ignore trained model files
+*.tflite
+*.onnx
 **/scratch*
 **/training/
 **/validation/
